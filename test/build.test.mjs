@@ -3,9 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { build, bundle } from '../build.mjs';
+
+const SRC = new URL('../src/', import.meta.url);
+// Alle Module in src/ mit Unterordnern, als Pfade relativ zu src/.
+const modules = () => readdirSync(SRC, { recursive: true }).map(f => f.split(sep).join('/')).filter(f => f.endsWith('.js')).sort();
 
 // Legt einen Wegwerf-Ordner mit den angegebenen Dateien an und gibt seinen Pfad zurück.
 function fixture(t, files) {
@@ -35,12 +40,50 @@ test('index.html enthält ein einziges Inline-Skript ohne import und lädt keine
   assert.doesNotThrow(() => new vm.Script(scripts[0][2]));
 });
 
-test('alle Module außer main.js lassen sich in Node als ES-Module laden', async () => {
-  // Das prüft nebenbei, dass jeder exportierte Name wirklich angelegt ist. main.js startet die App und braucht den Browser.
-  const dir = new URL('../src/', import.meta.url);
-  for (const f of readdirSync(dir).filter(f => f.endsWith('.js') && f !== 'main.js')) {
-    const m = await import(new URL(f, dir));
+test('alle Module außer app/main.js lassen sich in Node als ES-Module laden', async () => {
+  // Das prüft nebenbei, dass jeder exportierte Name wirklich angelegt ist. app/main.js startet die App und braucht den Browser.
+  for (const f of modules().filter(f => f !== 'app/main.js')) {
+    const m = await import(new URL(f, SRC));
     assert.ok(Object.keys(m).length > 0, `${f} exportiert nichts`);
+  }
+});
+
+// Erlaubte Abhängigkeiten nach Abschnitt 6.1 im Pflichtenheft: Ordner → Ordner, aus denen er importieren darf.
+// Der Kern steht bei jedem dabei, ein Ordner darf immer aus sich selbst importieren.
+const ALLOWED = {
+  core: [],
+  chords: ['core'],
+  styles: ['core'],
+  instruments: ['core'],
+  effects: ['core'],
+  engine: ['core'],
+  app: ['core', 'chords', 'styles', 'instruments', 'effects', 'engine'],
+};
+// Übergang: Diese Dateien liegen noch im Wurzelordner von src/ und ziehen in den Phasen 1 und 3 um.
+// Bis dahin gelten für sie und für Importe auf sie keine Regeln. Die Liste darf nur kürzer werden.
+const LEGACY = ['harmony.js', 'audio.js', 'sequencer.js'];
+
+test('Module importieren nur aus den Ordnern, die ihnen erlaubt sind', () => {
+  const files = modules();
+  assert.deepEqual(files.filter(f => !f.includes('/')).sort(), [...LEGACY].sort(), 'im Wurzelordner von src/ liegen nur noch die Übergangsdateien');
+  for (const f of files.filter(f => f.includes('/'))) {
+    const folder = f.split('/')[0];
+    assert.ok(ALLOWED[folder], `${f}: für den Ordner ${folder}/ ist keine Regel hinterlegt`);
+    const code = readFileSync(new URL(f, SRC), 'utf8');
+    for (const [, from] of code.matchAll(/^[ \t]*import\s*\{[^}]*\}\s*from\s*['"]([^'"]+)['"]/gm)) {
+      const target = relative(fileURLToPath(SRC), resolve(dirname(fileURLToPath(new URL(f, SRC))), from)).split(sep).join('/');
+      if (LEGACY.includes(target)) continue;
+      const to = target.split('/')[0];
+      assert.ok(to === folder || to === 'core' || ALLOWED[folder].includes(to), `${f} darf nicht aus ${to}/ importieren (${from})`);
+    }
+  }
+});
+
+test('Kern und Generatoren benutzen weder DOM noch Web Audio', () => {
+  for (const f of modules().filter(f => /^(core|chords|styles)\//.test(f))) {
+    const code = readFileSync(new URL(f, SRC), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    const hit = code.match(/\b(document|window|navigator|localStorage|AudioContext|requestAnimationFrame)\b/);
+    assert.ok(!hit, `${f} benutzt ${hit && hit[0]}`);
   }
 });
 

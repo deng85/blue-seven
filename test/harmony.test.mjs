@@ -2,17 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as H from '../src/harmony.js';
+import { createRng } from '../src/core/rng.js';
 
-// Fester Zufallsgenerator (mulberry32), damit Folgen reproduzierbar sind.
-function rng(seed) {
-  let a = seed;
-  return () => {
-    a |= 0; a = a + 0x6D2B79F5 | 0;
-    let t = Math.imul(a ^ a >>> 15, 1 | a);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
+// Fester Zufallsgenerator, damit Folgen reproduzierbar sind.
+const rng = createRng;
 const state = o => ({ key: 0, mode: 'dur', n: 4, spice: 35, nine: 1, loop: [], locks: [], ...o });
 
 // Referenzwerte aus der Version vor dem Refactoring (Commit 8623fa8).
