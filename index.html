@@ -140,13 +140,31 @@ select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-weight:600;fo
 .chips span{font-size:11px;color:var(--muted)}
 .chips button.on{background:var(--paper);color:var(--ink);border-color:var(--paper)}
 .chips button.on span{color:var(--ink)}
-#songBody summary{min-height:44px;display:flex;align-items:center;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer}
+#songBody summary,#pasteBox summary{min-height:44px;display:flex;align-items:center;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer}
 .lanes{position:relative;display:flex;flex-direction:column;gap:4px;padding-left:96px}
 .lane{position:relative}
 .lane span{position:absolute;left:-96px;width:90px;top:-2px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .laneBar{height:10px}
 .laneBar i{position:absolute;top:0;bottom:0;background:var(--muted);border-radius:2px}
 .laneOver{position:absolute;left:96px;right:0;top:0;bottom:0;pointer-events:none}
+
+/* songs: save, load, export, import; banner for a loaded song */
+.stack{display:flex;flex-direction:column;gap:10px}
+body.fixed .gen-only{display:none}
+.loaded{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--deep);border:1px solid var(--line);border-left:4px solid var(--hot);border-radius:4px}
+.loaded div{flex:1;min-width:0;display:flex;flex-direction:column}
+.loaded span{font-size:12px;color:var(--muted)}
+.loaded b{font-family:var(--display);font-size:19px;letter-spacing:.03em;overflow-wrap:anywhere}
+.loaded[hidden]{display:none}
+.saveRow{display:flex;gap:6px}
+.saveRow input,#songText{flex:1;min-width:0;min-height:44px;padding:0 10px;font:inherit;font-size:15px;color:var(--paper);background:var(--panel);border:1px solid var(--line);border-radius:4px}
+#songText{width:100%;padding:8px 10px;font-family:ui-monospace,monospace;font-size:12px;resize:vertical}
+.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.three .mini{min-width:0;padding:0 4px;font-size:13px}
+#pasteBox{display:flex;flex-direction:column;gap:6px}
+#pasteBox[open] summary{margin-bottom:6px}
+#pasteBox .mini{margin-top:6px}
+.fav .load span{color:var(--muted);font-size:13px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -155,6 +173,11 @@ select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-weight:600;fo
     <h1>Blue <span>Seven</span></h1>
     <div id="status" aria-live="polite"></div>
   </header>
+
+  <div class="loaded" id="loaded" hidden>
+    <div><span>Geladener Song</span><b id="loadedName"></b></div>
+    <button class="mini" id="closeSong">Schließen</button>
+  </div>
 
   <section aria-label="Akkordfolge">
     <div class="tiles" id="tiles"></div>
@@ -167,7 +190,7 @@ select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-weight:600;fo
     <div id="songBody"></div>
   </section>
 
-  <section>
+  <section class="gen-only">
     <h2>Folge</h2>
     <div class="row"><div class="lab"><label for="selChords">Akkord-Generator</label></div><select id="selChords"></select></div>
     <div class="two">
@@ -188,9 +211,11 @@ select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-weight:600;fo
 
   <section>
     <h2>Groove</h2>
-    <div class="row"><div class="lab"><label for="selStyle">Stil</label></div><select id="selStyle"></select></div>
-    <div id="styleParams"></div>
-    <button class="mini wide" id="rebuild" hidden>Song neu bauen</button>
+    <div class="gen-only stack">
+      <div class="row"><div class="lab"><label for="selStyle">Stil</label></div><select id="selStyle"></select></div>
+      <div id="styleParams"></div>
+      <button class="mini wide" id="rebuild" hidden>Song neu bauen</button>
+    </div>
     <div class="two">
       <div class="row"><div class="lab"><label for="bpm">Tempo</label><output id="bpmOut"></output></div><input type="range" id="bpm" min="56" max="132" step="1"></div>
       <div class="row"><div class="lab"><label for="swing">Swing</label><output id="swingOut"></output></div><input type="range" id="swing" min="0" max="100" step="5"></div>
@@ -204,6 +229,25 @@ select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-weight:600;fo
   </section>
 
   <section>
+    <h2>Songs</h2>
+    <div class="row"><div class="lab"><label for="songName">Name</label></div>
+      <div class="saveRow"><input type="text" id="songName" maxlength="60" placeholder="Leer lassen für den Titel des Songs" autocomplete="off"><button class="mini" id="saveSong">Speichern</button></div></div>
+    <div class="favs" id="songList"></div>
+    <div class="three">
+      <button class="mini" id="exportFile">Als Datei sichern</button>
+      <button class="mini" id="copySong">Kopieren</button>
+      <button class="mini" id="importFile">Datei laden</button>
+    </div>
+    <input type="file" id="songFile" accept=".json,application/json,text/plain" hidden>
+    <details id="pasteBox">
+      <summary>Song als Text einfügen</summary>
+      <textarea id="songText" rows="5" spellcheck="false" aria-label="Song als JSON-Text"></textarea>
+      <button class="mini wide" id="loadText">Text laden</button>
+    </details>
+    <p class="hint" id="songMsg" aria-live="polite">Speichern legt den aktuellen Song mit Mixer und Effekten in diesem Browser ab. Als Datei oder Text lässt er sich weitergeben.</p>
+  </section>
+
+  <section class="gen-only">
     <h2>Gemerkte Folgen</h2>
     <div class="favs" id="favs"></div>
     <p class="hint">Kein Ton? Medienlautstärke hochdrehen, auf dem iPhone auch den Stummschalter prüfen.</p>
@@ -1752,7 +1796,9 @@ const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR
 // chords sind die Akkorde der aktuellen Folge im Format blueseven.chords, recent die zuletzt erzeugten Folgen.
 const S=Object.assign({},DEF),favs=[],hist=[],recent=[],chords=[];
 let current=null;   // die ganze aktuelle Folge, nur über progression() lesbar
-const run={playing:false,active:-1};   // läuft gerade etwas, und welcher Akkord ist dran
+// läuft gerade etwas, und welcher Akkord ist dran. fixed: ein geladener Song {song, ov, orig}, der statt des
+// Generators gespielt wird (Phase 6). ov sind die von Hand gesetzten Adressen, orig der Stand beim Laden.
+const run={playing:false,active:-1,fixed:null};
 const LS='blueseven.v1';
 
 /* ---------- Akkord-Generator ---------- */
@@ -1802,6 +1848,8 @@ function load(d){
 }
 const keyLabel=(key,mode)=>noteName(key,key,mode)+(mode==='dur'?'-Dur':'-Moll');
 const keyName=()=>keyLabel(S.key,S.mode);
+// Tempo und Swing dessen, was gerade gilt: des geladenen Songs oder der Einstellungen für den Generator.
+const tempo=()=>run.fixed?run.fixed.song.tempo:{bpm:S.bpm,swing:S.swing};
 // Übernimmt eine Akkordfolge als aktuelle Folge.
 function setProg(p){current=p||null;chords.length=0;if(p)chords.push(...p.chords);}
 // Die aktuelle Folge im Format blueseven.chords, oder null.
@@ -1809,11 +1857,114 @@ const progression=()=>current;
 // Die aktuelle Folge neu ausgeben, zum Beispiel nach Tonartwechsel oder None an/aus.
 function revoice(){setProg(fromIds(S.loop,S.key,S.mode));}
 function pushHist(){if(S.loop.length){hist.push({key:S.key,mode:S.mode,n:S.n,loop:S.loop.slice()});if(hist.length>30)hist.shift();}}
-return {$,S,favs,hist,recent,chords,run,chordGen,genParams,styleMod,styleParams,setStyleParam,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,progression,revoice,pushHist};
+return {$,S,favs,hist,recent,chords,run,chordGen,genParams,styleMod,styleParams,setStyleParam,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,tempo,setProg,progression,revoice,pushHist};
+})();
+
+/* ---------- core/songfile.js ---------- */
+const __mod24=(function(){
+const {CHORDS_FORMAT,SONG_FORMAT,SONG_VERSION,checkSong}=__mod4;
+/* ================= Songs lesen, schreiben und sammeln ================= */
+/* Alles, was zum Sichern von Songs gehört und ohne Browser auskommt: einen Song aus Text lesen und prüfen,
+   ältere Formatversionen auf die aktuelle heben (F-V2), einen Song zum Weitergeben fertig machen und die Liste
+   der gespeicherten Songs pflegen. Speichern im Browser und Dateien liegen in app/songs.js. */
+
+
+// Migrationen: unter n steht die Funktion, die einen Song von Version n auf n+1 hebt. Sie bekommt eine Kopie und
+// gibt den geänderten Song zurück, version setzt migrateSong selbst. Bisher gibt es nur Version 1.
+const MIGRATIONS={};
+const MAX_SONGS=20,MAX_TEXT=2000000;
+const isObj=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
+const copy=x=>JSON.parse(JSON.stringify(x));
+
+// Hebt einen Song auf die Zielversion. Wirft einen Fehler mit verständlicher Meldung, wenn das nicht geht.
+// table und target sind nur für Tests anders als MIGRATIONS und SONG_VERSION.
+function migrateSong(song,table,target){
+  const steps=table||MIGRATIONS,goal=target||SONG_VERSION;
+  if(!isObj(song))throw new Error('Das ist kein Song: Erwartet wird ein JSON-Objekt.');
+  if(song.format===CHORDS_FORMAT)throw new Error('Das ist eine Akkordfolge, kein Song.');
+  if(song.format!==SONG_FORMAT)throw new Error('Das ist kein Song von Blue Seven. Das Feld format fehlt oder nennt ein anderes Format.');
+  if(!Number.isInteger(song.version)||song.version<1)throw new Error('Der Song nennt keine gültige Formatversion.');
+  if(song.version>goal)throw new Error(`Der Song hat Formatversion ${song.version}, diese App versteht nur bis Version ${goal}. Mit einer neueren Version der App lässt er sich laden.`);
+  let s=copy(song);
+  while(s.version<goal){
+    const step=steps[s.version],from=s.version;
+    if(!step)throw new Error(`Für Formatversion ${from} gibt es keine Umwandlung.`);
+    s=step(s);s.version=from+1;
+  }
+  return s;
+}
+// Liest einen Song aus Text oder aus einem Objekt, hebt ihn auf die aktuelle Version und prüft ihn.
+// Liefert den Song oder wirft einen Fehler mit einer Meldung für den Nutzer.
+function readSong(input){
+  let data=input;
+  if(typeof input==='string'){
+    const text=input.trim();
+    if(!text)throw new Error('Da steht nichts. Bitte den Text eines Songs einfügen.');
+    if(text.length>MAX_TEXT)throw new Error('Der Text ist zu groß für einen Song.');
+    try{data=JSON.parse(text);}
+    catch(e){throw new Error('Das ist kein gültiges JSON. Vielleicht fehlt ein Teil des Textes.');}
+  }
+  const song=migrateSong(data),errors=checkSong(song);
+  if(errors.length)throw new Error('Der Song ist ungültig: '+errors.slice(0,3).join(' ')+(errors.length>3?` Und ${errors.length-3} weitere Fehler.`:''));
+  return song;
+}
+// Hinweise auf Instrumente und Effekte, die diese App nicht kennt (F-V5). has(kind, type) fragt die Registry.
+function missingModules(song,has){
+  const out=[],seen=new Set();
+  const note=(kind,type,text)=>{if(has(kind,type)||seen.has(kind+type))return;seen.add(kind+type);out.push(text);};
+  for(const t of song.tracks)note('instruments',t.instrument.type,`Das Instrument „${t.instrument.type}“ gibt es in dieser App nicht, die Spur „${t.name||t.id}“ bleibt stumm.`);
+  const mx=song.mixer;
+  for(const owner of [...mx.channels,...(mx.returns||[]),mx.master])for(const x of owner.inserts||[])
+    note('effects',x.type,`Den Effekt „${x.type}“ gibt es in dieser App nicht, er wird übersprungen.`);
+  return out;
+}
+// Macht einen Song zum Sichern fertig: Werte, die der Nutzer von Hand gesetzt hat, stehen schon im Song. Damit sie
+// auch nach dem Laden gelten, entfällt die Automation auf diesen Adressen. Mit title bekommt der Song einen Namen.
+function packSong(song,overrides,title){
+  const s=copy(song),set=new Set(overrides||[]);
+  if(Array.isArray(s.automation))s.automation=s.automation.filter(a=>!set.has(a.target));
+  if(title){s.meta=isObj(s.meta)?s.meta:{};s.meta.title=title;}
+  return s;
+}
+const titleOf=song=>song&&isObj(song.meta)&&typeof song.meta.title==='string'&&song.meta.title.trim()||'Song';
+// Dateiname ohne Zeichen, die ein Dateisystem stören.
+function fileName(song){
+  const base=titleOf(song).normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/ß/g,'ss').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').toLowerCase();
+  return (base||'song')+'.blueseven.json';
+}
+
+/* ---------- Sammlung der gespeicherten Songs ---------- */
+// Liest die Sammlung aus dem gespeicherten Text. Unbrauchbare Einträge entfallen, statt die App zu blockieren.
+function readLibrary(text){
+  const lib={current:null,songs:[]};
+  let d=null;
+  try{d=JSON.parse(text||'null');}catch(e){}
+  if(!isObj(d))return lib;
+  const song=x=>{try{return readSong(x);}catch(e){return null;}};
+  for(const e of Array.isArray(d.songs)?d.songs:[]){
+    const s=isObj(e)&&typeof e.name==='string'&&e.name?song(e.song):null;
+    if(s&&lib.songs.length<MAX_SONGS&&!lib.songs.some(x=>x.name===e.name))lib.songs.push({name:e.name,saved:Number(e.saved)||0,song:s});
+  }
+  if(isObj(d.current)){
+    const s=song(d.current.song);
+    if(s)lib.current={song:s,ov:Array.isArray(d.current.ov)?d.current.ov.filter(a=>typeof a==='string'):[]};
+  }
+  return lib;
+}
+// Legt einen Song unter name in die Sammlung, neueste zuerst. Ein gleichnamiger Song wird ersetzt.
+// Liefert 'added', 'replaced' oder 'full' (dann bleibt die Sammlung unverändert).
+function putSong(songs,name,song,now){
+  const i=songs.findIndex(x=>x.name===name);
+  if(i<0&&songs.length>=MAX_SONGS)return 'full';
+  if(i>=0)songs.splice(i,1);
+  songs.unshift({name,saved:now||0,song:copy(song)});
+  return i>=0?'replaced':'added';
+}
+return {MIGRATIONS,MAX_SONGS,migrateSong,readSong,missingModules,packSong,titleOf,fileName,readLibrary,putSong};
 })();
 
 /* ---------- app/ui-params.js ---------- */
-const __mod24=(function(){
+const __mod25=(function(){
 const {normalizeValue}=__mod1;
 /* ================= Regler aus Parameterbeschreibungen ================= */
 /* Baut für einen Parameter (Abschnitt core/params.js) das passende Bedienelement und liest es wieder aus.
@@ -1873,11 +2024,15 @@ return {esc,num,formatValue,controlHtml,readControl};
 })();
 
 /* ---------- app/ui.js ---------- */
-const __mod25=(function(){
-const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName,styleMod,styleParams}=__mod23;
+const __mod26=(function(){
+const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName,tempo,styleMod,styleParams}=__mod23;
+const {MODES}=__mod0;
+const {titleOf}=__mod24;
 const {registry}=__mod22;
-const {esc,controlHtml}=__mod24;
+const {esc,controlHtml}=__mod25;
 /* ================= Oberfläche ================= */
+
+
 
 
 
@@ -1893,7 +2048,7 @@ function buildKeys(){
 function showNotes(i){
   document.querySelectorAll('#keys .on,#keys .bass').forEach(e=>e.classList.remove('on','bass'));
   const c=chords[i];if(!c)return;
-  c.voicing.forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
+  (c.voicing||[]).forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
   const b=$('k'+bassNote(c));if(b)b.classList.add('bass');
 }
 function setActive(i){
@@ -1903,18 +2058,25 @@ function setActive(i){
 }
 function seg(id,val){document.querySelectorAll('#'+id+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(val))));}
 function render(){
-  const tiles=$('tiles');tiles.style.gridTemplateColumns=`repeat(${S.n},minmax(0,1fr))`;
+  // Ein geladener Song (run.fixed) zeigt seine eigenen Akkorde ohne Halten, und alles, was zum Generator gehört,
+  // ist ausgeblendet (Klasse fixed am body).
+  const f=run.fixed,tp=tempo(),fc=f&&f.song.meta&&f.song.meta.chords;
+  document.body.classList.toggle('fixed',!!f);
+  $('loaded').hidden=!f;if(f)$('loadedName').textContent=titleOf(f.song);
+  const tiles=$('tiles');tiles.style.gridTemplateColumns=`repeat(${f?Math.min(4,Math.max(1,chords.length)):S.n},minmax(0,1fr))`;
   tiles.innerHTML=chords.map((c,i)=>`<div class="slot">
     <button class="tile" data-i="${i}" aria-label="${c.label.root}${c.label.suffix} anhören"><span class="rn">${c.label.roman}</span><span class="root">${c.label.root}</span><span class="suf">${c.label.suffix}</span></button>
-    <button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button></div>`).join('');
+    ${f?'':`<button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button>`}</div>`).join('');
   setActive(run.playing?run.active:-1);
-  $('status').innerHTML=`${keyName()}<br>${S.bpm} BPM`;
+  const key=!f?keyName():fc&&Number.isInteger(fc.key)&&MODES.includes(fc.mode)?keyLabel(fc.key,fc.mode):'Geladener Song';
+  $('status').innerHTML=`${key}<br>${Math.round(tp.bpm)} BPM`;
   seg('segN',S.n);seg('segMode',S.mode);seg('segNine',S.nine);
   document.querySelectorAll('#keys12 button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===S.key)));
-  for(const id of ['spice','bpm','swing'])$(id).value=S[id];
+  if(f){$('bpm').min=Math.min(40,Math.floor(tp.bpm));$('bpm').max=Math.max(200,Math.ceil(tp.bpm));}
+  $('spice').value=S.spice;$('bpm').value=tp.bpm;$('swing').value=tp.swing;
   $('spiceOut').textContent=S.spice===0?'pur':S.spice+' %';
-  $('bpmOut').textContent=S.bpm+' BPM';$('swingOut').textContent=S.swing+' %';
-  $('back').disabled=!hist.length;
+  $('bpmOut').textContent=Math.round(tp.bpm)+' BPM';$('swingOut').textContent=Math.round(tp.swing)+' %';
+  $('back').disabled=!!f||!hist.length;$('gen').disabled=$('fav').disabled=!!f;
   renderFavs();
 }
 // Auswahl von Akkord-Generator und Stil aus der Registry, dazu die Regler des gewählten Stils aus dessen
@@ -1944,10 +2106,10 @@ return {buildKeys,showNotes,setActive,render,renderFavs,renderModules};
 })();
 
 /* ---------- app/ui-mixer.js ---------- */
-const __mod26=(function(){
+const __mod27=(function(){
 const {$}=__mod23;
 const {registry}=__mod22;
-const {esc,controlHtml,readControl}=__mod24;
+const {esc,controlHtml,readControl}=__mod25;
 const {normalize}=__mod1;
 const {faderToGain,gainToFader}=__mod7;
 /* ================= Mixer in der Oberfläche ================= */
@@ -2070,9 +2232,9 @@ return {renderMixer,bindMixer};
 })();
 
 /* ---------- app/ui-song.js ---------- */
-const __mod27=(function(){
+const __mod28=(function(){
 const {$}=__mod23;
-const {esc}=__mod24;
+const {esc}=__mod25;
 /* ================= Songübersicht ================= */
 /* Für Songs mit mehreren Abschnitten: eine Leiste mit den Abschnitten im richtigen Längenverhältnis und der
    aktuellen Position, Knöpfe zum Springen und darunter, welche Spur in welchem Abschnitt spielt (nur Anzeige).
@@ -2112,7 +2274,7 @@ return {renderSong,showPosition};
 })();
 
 /* ---------- engine/timeline.js ---------- */
-const __mod28=(function(){
+const __mod29=(function(){
 /* ================= Zeitachse eines Songs ================= */
 /* Reine Funktionen ohne Web Audio: Welche Noten liegen in einem Zeitraum, und wie sieht der Song
    in seiner Struktur aus. Laufen in Node und werden dort getestet. */
@@ -2171,7 +2333,7 @@ return {notesBetween,structureKey,automationAt};
 })();
 
 /* ---------- engine/mixer.js ---------- */
-const __mod29=(function(){
+const __mod30=(function(){
 const {normalize,normalizeValue}=__mod1;
 /* ================= Mixer ================= */
 /* Baut aus song.mixer den Signalweg und führt Werte nach.
@@ -2333,11 +2495,11 @@ return {buildMixer};
 })();
 
 /* ---------- engine/engine.js ---------- */
-const __mod30=(function(){
+const __mod31=(function(){
 const {normalize,normalizeValue}=__mod1;
 const {checkSong,checkAddress}=__mod4;
-const {notesBetween,structureKey,automationAt}=__mod28;
-const {buildMixer}=__mod29;
+const {notesBetween,structureKey,automationAt}=__mod29;
+const {buildMixer}=__mod30;
 /* ================= Engine ================= */
 /* Spielt jeden gültigen Song ab. Kennt weder die Oberfläche noch den App-Zustand, Instrumente und Effekte
    nur über die Registry.
@@ -2600,7 +2762,7 @@ return {createEngine};
 })();
 
 /* ---------- core/mixmerge.js ---------- */
-const __mod31=(function(){
+const __mod32=(function(){
 /* ================= Mixer-Einstellungen übernehmen ================= */
 /* Wird der Inhalt eines Songs neu erzeugt, sollen die Einstellungen des Nutzers bleiben (F-P9).
    mergeMixer nimmt den frisch erzeugten Mixer und trägt die Werte aus dem bisherigen ein. Zugeordnet wird
@@ -2651,15 +2813,15 @@ return {mergeMixer};
 })();
 
 /* ---------- app/player.js ---------- */
-const __mod32=(function(){
+const __mod33=(function(){
 const {$,S,chords,run,progression,bassNote,styleMod,styleParams}=__mod23;
-const {setActive,showNotes}=__mod25;
-const {showPosition,renderSong}=__mod27;
+const {setActive,showNotes}=__mod26;
+const {showPosition,renderSong}=__mod28;
 const {createRng}=__mod2;
 const {registry}=__mod22;
-const {createEngine}=__mod30;
+const {createEngine}=__mod31;
 const {faderToGain,gainToFader}=__mod7;
-const {mergeMixer}=__mod31;
+const {mergeMixer}=__mod32;
 /* ================= Wiedergabe ================= */
 /* Verbindet die Bedienung mit der Engine. Baut aus der aktuellen Folge und den Einstellungen den Song,
    startet und stoppt, spielt einen Akkord zum Anhören an und zeigt, welcher Akkord gerade klingt.
@@ -2711,6 +2873,7 @@ function freshSong(){
 // Der Song zur aktuellen Folge mit den Mixer-Einstellungen des Nutzers (F-P9). Hat der Nutzer noch nichts
 // verstellt, gelten die drei Lautstärken aus blueseven.v1.
 function buildSong(){
+  if(run.fixed)return run.fixed.song;
   const song=freshSong();
   if(!song)return null;
   if(S.mix)song.mixer=mergeMixer(song.mixer,S.mix);
@@ -2719,8 +2882,10 @@ function buildSong(){
 }
 // Gibt der Engine den Song zur aktuellen Folge. Im Lauf gilt er ab dem nächsten Takt.
 function refresh(){
-  try{const song=buildSong();if(song){engine.load(song,{overrides:S.ov||[]});renderSong(song);}}
+  try{const song=buildSong();if(song){engine.load(song,{overrides:run.fixed?run.fixed.ov:S.ov||[]});renderSong(song);}}
   catch(e){
+    // Ein geladener Song, den die Engine nicht nimmt, wird geschlossen. Es gilt wieder der Generator.
+    if(run.fixed){run.fixed=null;refresh();$('hint').textContent=e.message;return;}
     // Ein unbrauchbarer gespeicherter Mixer darf die App nicht blockieren: einmal ohne ihn versuchen.
     if(S.mix){delete S.mix;delete S.ov;refresh();return;}
     $('hint').textContent=e.message;console.error(e);
@@ -2729,6 +2894,7 @@ function refresh(){
 // Hält S.mix und die drei alten Lautstärken auf dem Stand des Songs in der Engine (F-P8, F-P4).
 function syncMix(){
   const song=engine.song();if(!song)return;
+  if(run.fixed){run.fixed.song=song;run.fixed.ov=engine.overrides();return;}
   S.mix=song.mixer;S.ov=engine.overrides();
   for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)S[key]=Math.round(gainToFader(ch.gain));}
 }
@@ -2741,19 +2907,38 @@ function setMix(address,value){
 // Stellt die Standardwerte des Stils wieder her (F-P13). path: channel/<id>, return/<id>, master
 // oder einer davon mit /insert/<id> für einen einzelnen Effekt.
 function resetMix(path){
-  const def=freshSong();if(!def)return;
-  if(!S.mix)syncMix();
+  const def=run.fixed?run.fixed.orig:freshSong();if(!def)return;
+  if(!run.fixed&&!S.mix)syncMix();
+  const mixer=run.fixed?run.fixed.song.mixer:S.mix,keep=a=>a!==path&&!a.startsWith(path+'/');
   const [kind,a,b,c]=path.split('/'),find=(l,id)=>(l||[]).findIndex(x=>x.id===id);
   const owner=mx=>kind==='master'?mx.master:mx[kind==='channel'?'channels':'returns'][find(mx[kind==='channel'?'channels':'returns'],a)];
-  const mine=owner(S.mix),std=owner(def.mixer),fx=kind==='master'?(a==='insert'?b:null):(b==='insert'?c:null);
+  const mine=owner(mixer),std=owner(def.mixer),fx=kind==='master'?(a==='insert'?b:null):(b==='insert'?c:null);
   if(!mine||!std)return;
   if(fx){const i=find(mine.inserts,fx),j=find(std.inserts,fx);if(i>=0&&j>=0)mine.inserts[i]=std.inserts[j];}
   else{for(const k in mine)delete mine[k];Object.assign(mine,std);}
   // Zurückgesetzte Werte folgen wieder der Automation.
-  S.ov=(S.ov||[]).filter(a=>a!==path&&!a.startsWith(path+'/'));
+  if(run.fixed)run.fixed.ov=run.fixed.ov.filter(keep);else S.ov=(S.ov||[]).filter(keep);
   refresh();syncMix();
 }
 const currentSong=()=>engine.song();
+// Tempo oder Swing setzen (id: bpm oder swing). Gilt ab dem nächsten Takt, beim geladenen Song für diesen.
+function setTempo(id,value){
+  if(run.fixed)run.fixed.song.tempo[id]=value;else S[id]=value;
+  refresh();
+}
+// Spielt ab jetzt einen fertigen Song statt des Generators (F-P11): Er bringt seinen eigenen Mixer mit.
+// ov: Adressen, die Vorrang vor der Automation haben. Liefert false, wenn die Engine den Song nicht nimmt.
+function openSong(song,ov){
+  if(run.playing)stop();
+  run.fixed={song,ov:ov||[],orig:JSON.parse(JSON.stringify(song))};
+  refresh();
+  return !!run.fixed;
+}
+// Zurück zum Generator mit den Einstellungen, die vor dem Laden galten.
+function closeSong(){
+  if(run.playing)stop();
+  run.fixed=null;refresh();
+}
 // Springt an eine Stelle im Song. Läuft nichts, startet die Wiedergabe dort.
 function jump(beat){if(run.playing)engine.seek(beat);else start(beat);}
 
@@ -2789,25 +2974,176 @@ function stop(){
 // Spielt Akkord i an: die Töne leicht gebrochen auf dem Rhodes, dazu den Basston.
 function audition(i){
   if(!initAudio())return;
-  const c=chords[i];if(!c)return;
+  const c=chords[i];if(!c||!c.voicing)return;
   engine.audition([
     {track:'rhodes',notes:c.voicing.map((m,k)=>({p:m,v:.7,s:1.6,o:k*.02}))},
     {track:'bass',notes:[{p:bassNote(c),v:.8,s:1.4,o:0}]}
   ]);
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
-return {start,stop,audition,refresh,setMix,resetMix,currentSong,jump,chordAt};
+return {start,stop,audition,refresh,setMix,resetMix,setTempo,openSong,closeSong,currentSong,jump,chordAt};
+})();
+
+/* ---------- app/songs.js ---------- */
+const __mod34=(function(){
+const {$,S,run,setProg,revoice}=__mod23;
+const {registry}=__mod22;
+const {esc}=__mod25;
+const {render,renderModules}=__mod26;
+const {renderMixer}=__mod27;
+const {currentSong,openSong,closeSong}=__mod33;
+const {checkChords}=__mod4;
+const {MAX_SONGS,readSong,missingModules,packSong,titleOf,fileName,readLibrary,putSong}=__mod24;
+/* ================= Songs sichern ================= */
+/* Speichert Songs in diesem Browser, gibt sie als Datei oder Text weiter und lädt sie wieder (F-U10, F-P6).
+   Ein geladener Song wird so gespielt, wie er ist, mit seinem eigenen Mixer (F-P11). Solange er offen ist,
+   ruht der Generator. Die Songs liegen unter einem eigenen Schlüssel, damit blueseven.v1 klein bleibt. */
+
+
+
+
+
+
+
+
+
+const KEY='blueseven.songs.v1';
+const songs=[];   // gespeicherte Songs, neueste zuerst: {name, saved, song}
+let timer=0;
+const HINT='Akkord antippen zum Anhören. Mit „Halten“ bleibt er bei der nächsten Folge stehen.';
+
+const msg=text=>{$('songMsg').textContent=text;};
+// Schreibt Sammlung und geladenen Song in den Browser. false, wenn der Speicher voll oder gesperrt ist.
+function write(){
+  const f=run.fixed;
+  try{localStorage.setItem(KEY,JSON.stringify({current:f?{song:f.song,ov:f.ov}:null,songs}));return true;}
+  catch(e){return false;}
+}
+// Hält den geladenen Song nach einer Änderung an Mixer oder Tempo fest, mit etwas Abstand zum Ziehen am Regler.
+function storeSong(){
+  if(!run.fixed)return;
+  clearTimeout(timer);timer=setTimeout(write,400);
+}
+// Die Akkordfolge eines Songs, wenn sie sich als Kacheln zeigen lässt, sonst null.
+function chordsOf(song){
+  const c=song.meta&&song.meta.chords,str=x=>typeof x==='string';
+  if(!c||checkChords(c).length)return null;
+  return c.chords.every(x=>x.label&&str(x.label.roman)&&str(x.label.root)&&str(x.label.suffix)&&Array.isArray(x.voicing))?c:null;
+}
+// Zeichnet alles neu, nachdem ein Song geöffnet oder geschlossen wurde.
+function show(){
+  if(run.fixed)setProg(chordsOf(run.fixed.song));else revoice();
+  renderModules();render();renderMixer(currentSong());renderList();
+  $('hint').textContent=run.fixed?'Dieser Song ist geladen und spielt so, wie er gesichert wurde. Mixer, Effekte und Tempo lassen sich weiter ändern.':HINT;
+}
+function open(song,ov,text){
+  if(!openSong(song,ov)){show();msg('Der Song ließ sich nicht laden.');return;}
+  show();write();
+  msg([text,...missingModules(song,(kind,type)=>registry.has(kind,type))].join(' '));
+  $('loaded').scrollIntoView({block:'nearest'});
+}
+function close(){
+  revoice();closeSong();show();write();
+  msg('Song geschlossen. Es gilt wieder der Generator mit deinen Einstellungen.');
+}
+function tryOpen(text,from){
+  let song;
+  try{song=readSong(text);}catch(e){msg(e.message);return;}
+  open(song,[],`„${titleOf(song)}“ ${from} geladen.`);
+}
+// Der aktuelle Song zum Sichern, mit dem Namen aus dem Feld. Ohne Namen behält er seinen Titel.
+function packed(){
+  const song=currentSong();
+  return song?packSong(song,run.fixed?run.fixed.ov:S.ov,$('songName').value.trim()):null;
+}
+function saveCurrent(){
+  const song=packed();if(!song)return;
+  let name=titleOf(song);
+  // Ohne eigenen Namen wird nichts überschrieben: Der Titel bekommt eine Nummer.
+  if(!$('songName').value.trim()){
+    const base=name;
+    for(let n=2;songs.some(x=>x.name===name);n++)name=`${base} ${n}`;
+    song.meta.title=name;
+  }
+  const before=songs.slice(),r=putSong(songs,name,song,Date.now());
+  if(r==='full'){msg(`Es sind schon ${MAX_SONGS} Songs gespeichert. Bitte erst einen löschen oder als Datei sichern.`);return;}
+  if(!write()){
+    songs.length=0;songs.push(...before);
+    msg('Der Speicher des Browsers ist voll oder gesperrt, der Song wurde nicht gespeichert. Als Datei sichern geht trotzdem.');return;
+  }
+  $('songName').value='';renderList();
+  msg(r==='replaced'?`„${name}“ überschrieben.`:`Gespeichert als „${name}“.`);
+}
+function download(){
+  const song=packed();if(!song)return;
+  const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(song)],{type:'application/json'}));
+  a.href=url;a.download=fileName(song);document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  msg(`Die Datei ${fileName(song)} liegt bei den Downloads.`);
+}
+function copyText(){
+  const song=packed();if(!song)return;
+  const text=JSON.stringify(song),done=()=>msg('Der Song liegt als Text in der Zwischenablage.');
+  // Ohne Zugriff auf die Zwischenablage steht der Text markiert im Feld zum Kopieren von Hand.
+  const byHand=()=>{
+    const t=$('songText');$('pasteBox').open=true;t.value=text;t.focus();t.select();
+    let ok=false;try{ok=document.execCommand('copy');}catch(e){}
+    if(ok)done();else msg('Kopieren ging nicht von allein. Der Text steht unten im Feld und ist markiert.');
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,byHand);else byHand();
+}
+function readFile(file){
+  if(!file)return;
+  if(file.size>2000000){msg('Die Datei ist zu groß für einen Song.');return;}
+  const r=new FileReader();
+  r.onload=()=>tryOpen(String(r.result),'aus der Datei');
+  r.onerror=()=>msg('Die Datei ließ sich nicht lesen.');
+  r.readAsText(file);
+}
+const clock=s=>{const n=Math.round(s);return Math.floor(n/60)+':'+String(n%60).padStart(2,'0');};
+function renderList(){
+  const el=$('songList');
+  if(!songs.length){el.innerHTML='';return;}
+  el.innerHTML=songs.map((e,i)=>{
+    const s=e.song,len=s.loop?'Loop':clock(s.length*60/s.tempo.bpm);
+    return `<div class="fav"><button class="load" data-i="${i}"><b>${esc(e.name)}</b><span>${Math.round(s.tempo.bpm)} BPM · ${len}</span></button>`+
+      `<button class="del" data-i="${i}" aria-label="${esc(e.name)} löschen">×</button></div>`;
+  }).join('');
+}
+// Liest die Sammlung, öffnet den zuletzt geladenen Song wieder (F-P12) und verbindet die Bedienung.
+function initSongs(){
+  let text=null;
+  try{text=localStorage.getItem(KEY);}catch(e){}
+  const lib=readLibrary(text);
+  songs.length=0;songs.push(...lib.songs);
+  $('saveSong').addEventListener('click',saveCurrent);
+  $('exportFile').addEventListener('click',download);
+  $('copySong').addEventListener('click',copyText);
+  $('importFile').addEventListener('click',()=>$('songFile').click());
+  $('songFile').addEventListener('change',e=>{readFile(e.target.files[0]);e.target.value='';});
+  $('loadText').addEventListener('click',()=>tryOpen($('songText').value,'aus dem Text'));
+  $('closeSong').addEventListener('click',close);
+  $('songList').addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i,entry=songs[i];if(!entry)return;
+    if(b.classList.contains('del')){songs.splice(i,1);write();renderList();msg(`„${entry.name}“ gelöscht.`);}
+    else open(JSON.parse(JSON.stringify(entry.song)),[],`„${entry.name}“ geladen.`);
+  });
+  if(lib.current&&openSong(lib.current.song,lib.current.ov))show();else renderList();
+}
+return {initSongs,storeSong};
 })();
 
 /* ---------- app/main.js ---------- */
-const __mod33=(function(){
+const __mod35=(function(){
 const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist,styleMod,setStyleParam}=__mod23;
-const {buildKeys,render,renderFavs,renderModules}=__mod25;
-const {renderMixer,bindMixer}=__mod26;
-const {readControl}=__mod24;
+const {buildKeys,render,renderFavs,renderModules}=__mod26;
+const {renderMixer,bindMixer}=__mod27;
+const {readControl}=__mod25;
 const {randomSeed}=__mod2;
-const {start,stop,audition,refresh,setMix,resetMix,currentSong,jump}=__mod32;
+const {start,stop,audition,refresh,setMix,resetMix,setTempo,currentSong,jump}=__mod33;
+const {initSongs,storeSong}=__mod34;
 /* ================= Bedienung ================= */
+
 
 
 
@@ -2871,23 +3207,23 @@ function bind(){
   // Ein anderer Akkord-Generator würfelt eine neue Folge. Zurück gilt nur innerhalb eines Generators.
   $('selChords').addEventListener('change',e=>{S.chordGen=e.target.value;hist.length=0;recent.length=0;S.loop=[];S.locks=Array(S.n).fill(false);newLoop();});
   bindMixer({
-    set(address,value){setMix(address,value);save();},
+    set(address,value){setMix(address,value);save();storeSong();},
     song:currentSong,
-    reset(path){resetMix(path);renderMixer(currentSong());save();}
+    reset(path){resetMix(path);renderMixer(currentSong());save();storeSong();}
   });
   $('segNine').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.nine=+b.dataset.v;revoice();refresh();render();save();});
   $('keys12').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.key=+b.dataset.v;revoice();refresh();render();save();});
   // Tempo und Swing gelten ab dem nächsten Takt. Würze wirkt erst bei der nächsten Folge.
   for(const id of ['spice','bpm','swing'])$(id).addEventListener('input',e=>{
-    S[id]=+e.target.value;
-    if(id!=='spice')refresh();
-    render();save();
+    if(id==='spice')S.spice=+e.target.value;else setTempo(id,+e.target.value);
+    render();save();storeSong();
   });
 }
 function boot(d){
   load(d);buildKeys();renderModules();bind();
   if(S.loop.length){revoice();refresh();render();}else newLoop();
   renderMixer(currentSong());
+  initSongs();
 }
 if(window.claude&&window.claude.hot){
   window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({S,favs}));

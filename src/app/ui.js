@@ -1,5 +1,7 @@
 /* ================= Oberfläche ================= */
-import {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName,styleMod,styleParams} from './state.js';
+import {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName,tempo,styleMod,styleParams} from './state.js';
+import {MODES} from '../core/notes.js';
+import {titleOf} from '../core/songfile.js';
 import {registry} from './modules.js';
 import {esc,controlHtml} from './ui-params.js';
 
@@ -14,7 +16,7 @@ function buildKeys(){
 function showNotes(i){
   document.querySelectorAll('#keys .on,#keys .bass').forEach(e=>e.classList.remove('on','bass'));
   const c=chords[i];if(!c)return;
-  c.voicing.forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
+  (c.voicing||[]).forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
   const b=$('k'+bassNote(c));if(b)b.classList.add('bass');
 }
 function setActive(i){
@@ -24,18 +26,25 @@ function setActive(i){
 }
 function seg(id,val){document.querySelectorAll('#'+id+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(val))));}
 function render(){
-  const tiles=$('tiles');tiles.style.gridTemplateColumns=`repeat(${S.n},minmax(0,1fr))`;
+  // Ein geladener Song (run.fixed) zeigt seine eigenen Akkorde ohne Halten, und alles, was zum Generator gehört,
+  // ist ausgeblendet (Klasse fixed am body).
+  const f=run.fixed,tp=tempo(),fc=f&&f.song.meta&&f.song.meta.chords;
+  document.body.classList.toggle('fixed',!!f);
+  $('loaded').hidden=!f;if(f)$('loadedName').textContent=titleOf(f.song);
+  const tiles=$('tiles');tiles.style.gridTemplateColumns=`repeat(${f?Math.min(4,Math.max(1,chords.length)):S.n},minmax(0,1fr))`;
   tiles.innerHTML=chords.map((c,i)=>`<div class="slot">
     <button class="tile" data-i="${i}" aria-label="${c.label.root}${c.label.suffix} anhören"><span class="rn">${c.label.roman}</span><span class="root">${c.label.root}</span><span class="suf">${c.label.suffix}</span></button>
-    <button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button></div>`).join('');
+    ${f?'':`<button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button>`}</div>`).join('');
   setActive(run.playing?run.active:-1);
-  $('status').innerHTML=`${keyName()}<br>${S.bpm} BPM`;
+  const key=!f?keyName():fc&&Number.isInteger(fc.key)&&MODES.includes(fc.mode)?keyLabel(fc.key,fc.mode):'Geladener Song';
+  $('status').innerHTML=`${key}<br>${Math.round(tp.bpm)} BPM`;
   seg('segN',S.n);seg('segMode',S.mode);seg('segNine',S.nine);
   document.querySelectorAll('#keys12 button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===S.key)));
-  for(const id of ['spice','bpm','swing'])$(id).value=S[id];
+  if(f){$('bpm').min=Math.min(40,Math.floor(tp.bpm));$('bpm').max=Math.max(200,Math.ceil(tp.bpm));}
+  $('spice').value=S.spice;$('bpm').value=tp.bpm;$('swing').value=tp.swing;
   $('spiceOut').textContent=S.spice===0?'pur':S.spice+' %';
-  $('bpmOut').textContent=S.bpm+' BPM';$('swingOut').textContent=S.swing+' %';
-  $('back').disabled=!hist.length;
+  $('bpmOut').textContent=Math.round(tp.bpm)+' BPM';$('swingOut').textContent=Math.round(tp.swing)+' %';
+  $('back').disabled=!!f||!hist.length;$('gen').disabled=$('fav').disabled=!!f;
   renderFavs();
 }
 // Auswahl von Akkord-Generator und Stil aus der Registry, dazu die Regler des gewählten Stils aus dessen
