@@ -41,7 +41,7 @@ Die Datei hat drei Teile: `<style>`, das Markup und ein `<script>`. Das Skript i
 | Ablauf | `scheduleBar`, `tick`, `frame`, `start`, `stop`, `audition` | Takt-Scheduler mit Vorausplanung, Anzeige des laufenden Akkords |
 | Bedienung | `bind`, `boot` | Event-Handler und Start |
 
-Nachtrag: Seit der Umstellung auf ES-Module liegt jeder Abschnitt als eigenes Modul in `src/`, und `build.mjs` führt sie zu einem Skript zusammen (siehe `README.md`). Die Harmonielogik in `src/harmony.js` läuft ohne Browser in Node und wird von den Tests direkt importiert. Der frühere Kommentar `/*--UI--*/` ist entfallen.
+Nachtrag: Seit der Umstellung auf ES-Module liegt jeder Abschnitt als eigenes Modul in `src/`, und `build.mjs` führt sie zu einem Skript zusammen (siehe `README.md`). Die Harmonielogik in `src/chords/jazzy.js` (früher `src/harmony.js`) läuft ohne Browser in Node und wird von den Tests direkt importiert. Der frühere Kommentar `/*--UI--*/` ist entfallen.
 
 ### So arbeitet der Generator
 
