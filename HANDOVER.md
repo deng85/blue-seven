@@ -41,7 +41,7 @@ Die Datei hat drei Teile: `<style>`, das Markup und ein `<script>`. Das Skript i
 | Ablauf | `scheduleBar`, `tick`, `frame`, `start`, `stop`, `audition` | Takt-Scheduler mit Vorausplanung, Anzeige des laufenden Akkords |
 | Bedienung | `bind`, `boot` | Event-Handler und Start |
 
-Nachtrag: Seit der Umstellung auf ES-Module liegt jeder Abschnitt als eigenes Modul in `src/`, und `build.mjs` führt sie zu einem Skript zusammen (siehe `README.md`). Die Harmonielogik in `src/chords/jazzy.js` (früher `src/harmony.js`) läuft ohne Browser in Node und wird von den Tests direkt importiert. Der frühere Kommentar `/*--UI--*/` ist entfallen.
+Nachtrag: Seit der Umstellung auf ES-Module liegt jeder Abschnitt als eigenes Modul in `src/`, und `build.mjs` führt sie zu einem Skript zusammen (siehe `README.md`). Die Harmonielogik in `src/chords/jazzy.js` (früher `src/harmony.js`) läuft ohne Browser in Node und wird von den Tests direkt importiert. Der frühere Kommentar `/*--UI--*/` ist entfallen. Seit Phase 3 des Pflichtenhefts gibt es Klang und Ablauf nicht mehr als eigene Abschnitte: Rhodes, Bass und Drums sind Instrumente in `src/instruments/`, Tiefpass, Tremolo, Hall und Kompressor Effekte in `src/effects/`, der Takt-Scheduler steckt in `src/engine/engine.js`, und `src/app/player.js` verbindet die Bedienung mit der Engine. Die App spielt nur noch den Song im Format `blueseven.song`.
 
 ### So arbeitet der Generator
 
@@ -61,7 +61,7 @@ Nachtrag: Seit der Umstellung auf ES-Module liegt jeder Abschnitt als eigenes Mo
 - **iPhone:** `iosUnmute` spielt ein stummes `<audio>` in Schleife, damit Web Audio auch bei aktivem Stummschalter klingt. Auf dem iPhone des Nutzers nicht verifiziert.
 - **Verzögerung:** Der große Puffer ist Absicht. Antippen eines Akkords klingt dadurch einen Tick später; `frame` gleicht die Anzeige über `outputLatency` aus.
 - **Änderungen im Lauf:** Tempo, Akkorde und Spielweise greifen erst ab dem nächsten Takt, weil immer ein ganzer Takt auf einmal geplant wird.
-- **Stopp:** Laufende Klangquellen stehen in `live` und werden über `gate` ausgeblendet und dann beendet.
+- **Stopp:** Laufende Klangquellen werden über `gate` ausgeblendet und dann beendet. Seit Phase 3 merkt sich jedes Instrument seine Stimmen selbst (`src/instruments/voices.js`).
 - **Speicher:** Gemerkte Folgen liegen nur im Browser des Geräts.
 - **Gestaltung:** Ein festes dunkles Farbschema (Blau, Papierweiß, ein Orange als Akzent), Schriften Barlow Condensed und Instrument Sans von Google Fonts. Farben stehen als Variablen im `:root`-Block.
 - **Zweite Kopie:** Die Seite ist zusätzlich als Claude-Artifact veröffentlicht. Das aktualisiert sich nicht von selbst aus dem Repo. Dort gelten Einschränkungen: keine Downloads per Skript, Schriften nur von Google Fonts, Skripte nur inline oder von wenigen CDNs.

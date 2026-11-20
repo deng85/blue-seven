@@ -148,15 +148,15 @@ src/
   core/         registry.js  params.js  rng.js  format.js  voicing.js
   chords/       jazzy.js
   styles/       jazzy-beats.js  deep-house.js
-  engine/       transport.js  mixer.js  engine.js
-  instruments/  rhodes.js  bass.js  drums.js  …
+  engine/       timeline.js  mixer.js  engine.js
+  instruments/  voices.js  rhodes.js  bass.js  drums.js  …
   effects/      filter.js  tremolo.js  reverb.js  compressor.js  delay.js  ducker.js
-  app/          modules.js  state.js  ui.js  ui-mixer.js  main.js
+  app/          modules.js  state.js  player.js  ui.js  ui-mixer.js  main.js
 test/
 docs/
 ```
 
-Stand nach Phase 2: `core/`, `chords/`, `styles/` und `app/` gibt es. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/`, bis sie in Phase 3 zu Instrumenten, Effekten und Engine werden.
+Stand nach Phase 3: Alle Module liegen in diesen Ordnern, `audio.js` und `sequencer.js` gibt es nicht mehr. Der Transport steckt in `engine/engine.js`, welche Noten in einem Zeitraum liegen, berechnet `engine/timeline.js`. `app/player.js` verbindet die Bedienung mit der Engine. Noch fehlen `deep-house.js`, `delay.js`, `ducker.js` und `ui-mixer.js` (Phasen 4 und 5).
 
 `src/index.html` enthält nur noch Markup, die Zeile für `styles.css` und eine Zeile für das Skript, an deren Stelle der Build das zusammengeführte Skript setzt.
 
@@ -285,7 +285,7 @@ Tempo und Swing stehen in `ctx` und nicht in `params`, weil sie zum Song-Tempo g
 
 ### 8.1 Stil „Jazzy Beats“
 
-Bildet `scheduleBar` aus `src/sequencer.js` als Daten ab:
+Bildet `scheduleBar` aus dem früheren `src/sequencer.js` als Daten ab:
 
 - Übernimmt die Lage aus `voicing`, damit die Stimmführung von Jazzy wie heute klingt.
 - Parameter `feel` mit `pad`, `comp`, `arp` und denselben Zeiten, Längen und Anschlagstärken wie heute, inklusive der kleinen Versätze zwischen den Akkordtönen (16 ms, 8 ms).
@@ -303,7 +303,7 @@ Was über den heutigen Ablauf hinausgeht, weil der Stil jede Akkordfolge verarbe
 - **Drums:** Ein Pattern von einem Takt, das über den ganzen Loop wiederholt wird, unabhängig von den Akkordgrenzen.
 - **Anzahl der Töne:** Betont wird der oberste Ton der Lage. Gebrochen läuft einmal hinauf und dann zwischen dem zweiten und dem obersten Ton hin und her, bei vier Tönen also wie heute 1-2-3-4-3-2-3-4.
 
-Abgesichert wird das durch `test/jazzy-beats.test.mjs`. Er vergleicht die Noten des Songs mit einer wörtlichen Kopie von `scheduleBar` in `test/fixtures/legacy-bar.js` für alle Spielweisen, mehrere Tempi und Swing-Werte. Die Kopie bleibt als Referenz, wenn `sequencer.js` in Phase 3 entfällt.
+Abgesichert wird das durch `test/jazzy-beats.test.mjs`. Er vergleicht die Noten des Songs mit einer wörtlichen Kopie von `scheduleBar` in `test/fixtures/legacy-bar.js` für alle Spielweisen, mehrere Tempi und Swing-Werte. Die Kopie bleibt die Referenz, seit `sequencer.js` in Phase 3 entfallen ist. `test/engine.test.mjs` vergleicht damit auch, was die Engine zu welcher Zeit spielt.
 
 ### 8.2 Stil „Deep House“
 
@@ -448,29 +448,30 @@ track/<spur>/instrument/<parameter>
 
 ```js
 import { createEngine } from '../engine/engine.js';
-const engine = createEngine(registry);
+const engine = createEngine(registry);  // zweites Argument nur für Tests: AudioContext und Zeitgeber
 
-engine.init();                         // AudioContext anlegen, nur nach Nutzeraktion
-engine.load(song);                     // Song prüfen, Instrumente, Effekte und Mixer aufbauen
-engine.swap(song, { at: 'bar' });      // Song im Lauf ersetzen, Position bleibt erhalten
+engine.init();                         // AudioContext anlegen, nur nach Nutzeraktion. Fehler mit code 'unsupported' oder 'failed'
+engine.load(song);                     // Song prüfen und übernehmen. Im Lauf gilt er ab dem nächsten Takt
 engine.play({ from: 0 });              // Start an einer Position in Vierteln
 engine.stop();
-engine.seek(beats);                    // zu einer Position oder einem Abschnitt springen
-engine.setParam(address, value);       // Wert sofort ändern, Adressen aus 9.4
-engine.audition(trackId, notes);       // einzelne Noten sofort anspielen (Akkord antippen)
-engine.on('position', fn);             // Takt, Abschnitt, laufender Akkord, mit Ausgleich der Ausgabelatenz
+engine.setParam(address, value);       // Wert sofort ändern, Adressen aus 9.4, wird in den Song geschrieben
+engine.audition([{ track, notes: [{ p, v, s, o }] }]);  // Noten sofort anspielen, s und o in Sekunden
+engine.position();                     // { beat, song } mit Ausgleich der Ausgabelatenz, oder null
+engine.song();                         // Kopie des Songs mit allen gesetzten Werten
 engine.on('ended', fn);
 engine.on('warning', fn);
 ```
 
+Umgesetzt in Phase 3, mit diesen Abweichungen vom ersten Entwurf: `swap` ist in `load` aufgegangen, weil ein neuer Song im Lauf immer an der nächsten Taktgrenze greifen soll. Die Position wird mit `position()` abgefragt statt gemeldet: Die Oberfläche zeichnet ohnehin in jedem Bild (`requestAnimationFrame`), und welcher Akkord läuft, rechnet die App aus `song.meta.chords` aus. `audition` nimmt mehrere Spuren auf einmal, weil das Antippen eines Akkords Rhodes und Bass spielt. `seek` kommt mit der Songübersicht in Phase 5.
+
 - **F-E1** Die Engine spielt jedes Song-JSON ab, das die Formatprüfung besteht. Sie enthält keine Sonderfälle für einzelne Stile.
 - **F-E2** Die Engine greift nicht auf das DOM und nicht auf den App-Zustand zu. Meldungen gehen über Ereignisse an die App.
-- **F-E3** Geplant wird wie heute mit Vorausschau: ein Zeitgeber alle 50 ms plant alle Noten der nächsten 0,6 s. Geplant wird nach Zeitfenster, nicht mehr taktweise, damit lange Songs den Speicher nicht füllen.
-- **F-E4** `setParam` wirkt sofort und ohne Knackser (geglättet wie heute mit etwa 20 ms). Tempo und Swing wirken ab den noch nicht geplanten Noten.
-- **F-E5** `swap` ersetzt den Song an der nächsten Taktgrenze, ohne dass die Wiedergabe abreißt. Das deckt das heutige Verhalten ab, dass neue Akkorde und eine andere Spielweise ab dem nächsten Takt greifen.
-- **F-E6** Vom Nutzer gesetzte Werte haben Vorrang vor Automation, bis der Nutzer den Wert zurücksetzt. Sie werden in den Song geschrieben (siehe 12.1).
+- **F-E3** Geplant wird wie heute taktweise mit Vorausschau: Ein Zeitgeber alle 50 ms plant jeden Takt, der in den nächsten 0,6 s beginnt. Im Voraus liegt damit nie mehr als etwa ein Takt, auch lange Songs füllen den Speicher nicht. Taktweise bleibt es, weil nur so Tempo und ein neuer Song genau wie bisher an der Taktgrenze greifen.
+- **F-E4** `setParam` wirkt sofort und ohne Knackser (geglättet wie heute mit etwa 20 ms). Tempo und Swing wirken ab dem nächsten noch nicht geplanten Takt.
+- **F-E5** `load` im Lauf ersetzt den Song an der nächsten Taktgrenze, ohne dass die Wiedergabe abreißt. Das deckt das heutige Verhalten ab, dass neue Akkorde und eine andere Spielweise ab dem nächsten Takt greifen. Hat der neue Song denselben Aufbau (Spuren, Instrumente, Kanäle, Effekte, Sends), bleibt der Signalweg bestehen und nur geänderte Werte werden nachgeführt. Sonst wird neu aufgebaut, und der alte Signalweg klingt noch 4 s aus.
+- **F-E6** Vom Nutzer gesetzte Werte haben Vorrang vor Automation, bis der Nutzer den Wert zurücksetzt. Sie werden in den Song geschrieben (siehe 12.1). Die Automation selbst kommt mit Phase 5.
 - **F-E7** Stopp blendet wie heute über ein Gate in etwa 15 ms aus und beendet alle laufenden Klangquellen.
-- **F-E8** `iosUnmute` und der Start des `AudioContext` nach dem ersten Tippen bleiben erhalten.
+- **F-E8** `iosUnmute` und der Start des `AudioContext` nach dem ersten Tippen bleiben erhalten. `iosUnmute` braucht das DOM und liegt deshalb in `app/player.js`, nicht in der Engine.
 
 ### 10.2 Instrument
 
@@ -485,7 +486,7 @@ const rhodes = {
       output,                                  // AudioNode, wird vom Mixer an den Kanal gehängt
       play(note, time, seconds) {},            // note = { p, v }, time in AudioContext-Zeit
       setParam(id, value, time) {},
-      stopAll(time) {},                        // alle laufenden Stimmen beenden
+      stopAll() {},                            // alle laufenden und geplanten Stimmen sofort beenden
       dispose() {}
     };
   }
@@ -494,7 +495,7 @@ const rhodes = {
 
 - **F-I1** Ein Instrument kennt nur den `AudioContext` und seinen Ausgang. Es weiß nichts von Takten, Songs oder dem Mixer.
 - **F-I2** Die heutigen Klänge werden zu den Instrumenten `rhodes`, `bass` und `drums` (Kick, Hi-Hat, Rim) mit unveränderter Synthese. Tiefpass und Tremolo des Rhodes wandern als Effekte in den Kanal. Jedes Instrument hat einen Parameter `level` (linear, Standard 1) für seinen Grundpegel.
-- **F-I3** Jedes Instrument begrenzt die Zahl gleichzeitiger Stimmen und beendet bei Überschreitung die älteste.
+- **F-I3** Jedes Instrument begrenzt die Zahl gleichzeitiger Stimmen und blendet bei Überschreitung die älteste in wenigen Millisekunden aus. Grenzen: Rhodes 24, Bass 8, Drums 16. Jazzy Beats kommt im Lauf nicht in die Nähe, nur sehr schnelles Antippen von Akkorden kann die Grenze des Rhodes erreichen.
 - **F-I4** Zufall im Klang selbst (leichte Verstimmung des Rhodes, Startpunkt im Rauschen) bleibt im Instrument und steht nicht im Song.
 
 ### 10.3 Effekt
@@ -538,11 +539,13 @@ Mindestumfang an Effekten:
 - **F-M1** Pro Kanal: Lautstärke, Panorama, Mute, Solo, Insert-Kette, Sends auf Effektspuren.
 - **F-M2** Effektspuren haben Lautstärke, Mute und eine eigene Insert-Kette. Sie führen in die Summe.
 - **F-M3** Die Summe hat Lautstärke und Insert-Kette. Dahinter liegt das Gate für den Stopp.
-- **F-M4** Signalweg eines Kanals: Instrumente → Inserts → Fader → Panorama → Summe. Sends greifen nach dem Fader ab.
+- **F-M4** Signalweg eines Kanals: Instrumente → Inserts → Fader → Panorama → Mute → Summe. Sends greifen nach Fader, Panorama und Mute ab. Der Fader arbeitet immer in Stereo, damit ein Mono-Instrument bei Panorama 0 nicht 3 dB leiser wird.
 - **F-M5** Solo schaltet alle anderen Kanäle stumm. Effektspuren bleiben hörbar.
 - **F-M6** Die Regler der Oberfläche gehen von 0 bis 100 und werden wie heute mit dem Exponenten 1,6 in den linearen Pegel umgerechnet. Im Song steht der lineare Pegel.
 
 Wichtig für die Klangtreue: Heute greift der Hall-Send des Rhodes hinter Tiefpass, Tremolo und Lautstärke ab. Die Reihenfolge aus F-M4 muss für Jazzy Beats hörbar dasselbe Ergebnis liefern. Falls nicht, wird die Position des Faders im Kanal angepasst, nicht der Klang.
+
+Nachweis aus Phase 3: Ein Test in Node rechnet für jeden Kanal den Pegel vom Instrument bis zum Ausgang und in den Hall nach. Er ergibt genau die früheren Bus-Pegel (Rhodes Regler mal 1,1, Bass Regler, Drums Regler mal 0,9; Hall-Sends 0,24 und 0,06). Im Browser wurden alter und neuer Stand mit gleichem Zufall verglichen: Alle Oszillatoren und Rauschquellen starten zur selben Zeit mit derselben Frequenz und Verstimmung, alle Hüllkurven sind gleich, und die Energie am Ausgang ist über 4,4 s in jedem Durchgang (alle Spuren, jede Spur allein, voller Pegel mit vollem Swing) auf 0,002 dB gleich. Links und rechts einzeln weichen beim Rhodes bis zu 0,06 dB gegenläufig ab, weil das Tremolo mit einer anderen Phase startet. Bewusst anders: Das Gate sitzt jetzt hinter dem Kompressor der Summe, und die Pegel werden beim Start direkt gesetzt statt in 20 ms eingeblendet.
 
 ## 11. App und Oberfläche
 
