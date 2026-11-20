@@ -36,3 +36,7 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 `node build.mjs` (oder `npm run build`) setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
 
 `npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert) und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
+
+## Ausblick
+
+Der geplante Umbau zur modularen DAW mit Song-JSON, Akkord- und Stil-Generatoren steht in [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.md).
