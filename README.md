@@ -10,11 +10,13 @@ Kleine Loop-DAW für jazzige Akkordfolgen. Am Ende eine einzige HTML-Datei ohne 
 - Stimmführung mit möglichst kleinen Bewegungen zwischen den Akkorden
 - Rhodes-artiger FM-Sound mit Stereo-Tremolo und Hall, dazu Bass und Drums (Web Audio API)
 - Spielweisen liegend, Comping, gebrochen; Tempo, Swing, Mixer
+- Zweiter Stil „Deep House“: baut aus derselben Akkordfolge einen ganzen Song mit Intro, Aufbau, Drop, Break und Outro, mit Pumpen, Echo und Filterfahrten
+- Songübersicht mit Abschnitten zum Hinspringen und einer Balkenansicht der Spuren
 - Akkorde halten, vorherige Folge zurückholen, Folgen merken (localStorage)
 
 ## Benutzen
 
-`index.html` im Browser öffnen und auf Play tippen. Auf dem iPhone muss die Lautstärke aufgedreht sein.
+`index.html` im Browser öffnen und auf Play tippen. Die Medienlautstärke am Handy muss aufgedreht sein.
 
 Mit GitHub Pages (Settings → Pages → Branch `main`) läuft sie direkt unter `https://deng85.github.io/blue-seven/`.
 
@@ -31,6 +33,7 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/app/state.js` | Zustand `S`, aktuelle Akkordfolge, Speichern in `localStorage` |
 | `src/app/player.js` | Baut aus Folge und Einstellungen den Song, Play/Stopp, Anhören, laufender Akkord |
 | `src/app/ui.js` | Kacheln, Klaviatur, Regler, Auswahl von Akkord-Generator und Stil |
+| `src/app/ui-song.js` | Songübersicht: Abschnitte, laufende Position, Spuren als Balken |
 | `src/app/ui-mixer.js` | Mixer: Kanäle, Effektspuren und Summe mit Effektreglern, aus dem Song erzeugt |
 | `src/app/ui-params.js` | Bedienelemente aus Parameterbeschreibungen (für Stil- und Effektparameter) |
 | `src/app/main.js` | Event-Handler und Start |
@@ -44,13 +47,14 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/core/mixmerge.js` | Übernimmt die Mixer-Einstellungen des Nutzers in einen neu erzeugten Song |
 | `src/core/voicing.js` | Stimmführung für Akkordfolgen ohne Lage |
 | `src/styles/jazzy-beats.js` | Stil „Jazzy Beats“: baut aus einer Akkordfolge einen Song als JSON |
-| `src/engine/engine.js` | Spielt jeden gültigen Song ab: Ablauf mit Vorausschau, Werte setzen, Anhören, Position |
+| `src/styles/deep-house.js` | Stil „Deep House“: ganzer Song mit Arrangement, eigener Akkordlage und Automation |
+| `src/engine/engine.js` | Spielt jeden gültigen Song ab: Ablauf mit Vorausschau, Werte setzen, Automation, Springen, Anhören, Position |
 | `src/engine/mixer.js` | Kanäle mit Inserts, Fader, Panorama, Mute, Solo und Sends, Effektspuren, Summe |
-| `src/engine/timeline.js` | Welche Noten in einem Zeitraum liegen, Aufbau eines Songs (ohne Web Audio, in Node testbar) |
-| `src/instruments/` | Rhodes, Bass, Drums mit der bisherigen Klangerzeugung, `voices.js` begrenzt die Stimmen |
-| `src/effects/` | Filter, Tremolo, Hall, Kompressor |
+| `src/engine/timeline.js` | Welche Noten in einem Zeitraum liegen, Wert einer Automation an einer Stelle, Aufbau eines Songs (ohne Web Audio, in Node testbar) |
+| `src/instruments/` | Rhodes, Bass, Drums (Jazz- und House-Kit), Synth und Rauschanstieg, `voices.js` begrenzt die Stimmen |
+| `src/effects/` | Filter, Tremolo, Hall, Kompressor, Echo, Ducker (Pumpen) |
 
-Die App holt sich Akkordfolgen über die Registry vom Akkord-Generator und arbeitet mit dem Format `blueseven.chords` weiter. Der Stil Jazzy Beats macht daraus einen Song im Format `blueseven.song`, und die Engine spielt diesen Song ab. Instrumente und Effekte bekommt die Engine nur über die Registry. Bei jeder Änderung (neue Folge, Tonart, Spielweise, Tempo) baut die App den Song neu und gibt ihn der Engine, die ihn ab dem nächsten Takt spielt. Welcher Ordner aus welchem importieren darf, prüft ein Test.
+Die App holt sich Akkordfolgen über die Registry vom Akkord-Generator und arbeitet mit dem Format `blueseven.chords` weiter. Der gewählte Stil (Jazzy Beats oder Deep House) macht daraus einen Song im Format `blueseven.song`, und die Engine spielt diesen Song ab. Instrumente und Effekte bekommt die Engine nur über die Registry. Bei jeder Änderung (neue Folge, Tonart, Spielweise, Tempo) baut die App den Song neu und gibt ihn der Engine, die ihn ab dem nächsten Takt spielt. Welcher Ordner aus welchem importieren darf, prüft ein Test.
 
 Die Dateien in `src/` sind ES-Module. `node build.mjs` (oder `npm run build`) führt sie zu einem einzigen Inline-Skript zusammen und setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt nichts nach. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
 
@@ -63,7 +67,7 @@ export {c, d};                     // nur eine Liste von Namen, am Dateiende
 
 Nicht erlaubt sind `export default`, `export const`, `import * as`, Umbenennen mit `as`, `import()` und Importe im Kreis. Exportierte Namen müssen `const` oder `function` sein und dürfen nicht neu zugewiesen werden. Bei Verstößen bricht der Build mit einer Meldung ab.
 
-`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert), die Formate, den Stil Jazzy Beats, die Engine mit einem nachgebauten AudioContext (`test/fixtures/fake-audio.js`), den Build und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
+`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert), die Formate, die Stile Jazzy Beats und Deep House, die Engine mit einem nachgebauten AudioContext (`test/fixtures/fake-audio.js`), den Build und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
 
 ## Ausblick
 
