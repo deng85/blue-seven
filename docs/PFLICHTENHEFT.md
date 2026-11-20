@@ -156,7 +156,7 @@ test/
 docs/
 ```
 
-Stand nach Phase 3: Alle Module liegen in diesen Ordnern, `audio.js` und `sequencer.js` gibt es nicht mehr. Der Transport steckt in `engine/engine.js`, welche Noten in einem Zeitraum liegen, berechnet `engine/timeline.js`. `app/player.js` verbindet die Bedienung mit der Engine. Noch fehlen `deep-house.js`, `delay.js`, `ducker.js` und `ui-mixer.js` (Phasen 4 und 5).
+Stand nach Phase 3: Alle Module liegen in diesen Ordnern, `audio.js` und `sequencer.js` gibt es nicht mehr. Der Transport steckt in `engine/engine.js`, welche Noten in einem Zeitraum liegen, berechnet `engine/timeline.js`. `app/player.js` verbindet die Bedienung mit der Engine. Seit Phase 4 gibt es `app/ui-mixer.js`, `app/ui-params.js` (Bedienelemente aus Parameterbeschreibungen) und `core/mixmerge.js` (F-P9). Noch fehlen `deep-house.js`, `delay.js` und `ducker.js` (Phase 5).
 
 `src/index.html` enthält nur noch Markup, die Zeile für `styles.css` und eine Zeile für das Skript, an deren Stelle der Build das zusammengeführte Skript setzt.
 
@@ -561,6 +561,8 @@ Nachweis aus Phase 3: Ein Test in Node rechnet für jeden Kanal den Pegel vom In
 - **F-U10 Export und Import:** Der aktuelle Song lässt sich als JSON-Datei speichern und in die Zwischenablage kopieren. Eine JSON-Datei oder eingefügter Text lässt sich laden und abspielen, auch wenn sie nicht aus einem der eingebauten Generatoren stammt.
 - **F-U11 Fehlermeldungen:** Ungültige Songs und fehlende Module werden in normalem Deutsch gemeldet.
 
+Stand nach Phase 4: Umgesetzt sind F-U1 (zwei Auswahllisten aus der Registry, bisher mit je einem Eintrag), F-U3, F-U6, F-U7 und F-U8. Der Mixer entsteht vollständig aus dem Song: ein Streifen pro Kanal, Effektspur und Summe, aufklappbar mit Panorama, Sends und Effekten. Effektparameter mit `live:false` (Dauer des Halls) gelten erst beim Loslassen des Reglers. Die Regler des Akkord-Generators (Anzahl, Tongeschlecht, Würze, Farbton) sind noch von Hand gebaut und werden mit dem zweiten Akkord-Generator verallgemeinert. „Song neu bauen“ (F-U9) und F-U4, F-U5 kommen mit Deep House in Phase 5, F-U10 in Phase 6.
+
 ## 12. Speicherung und Kompatibilität
 
 - **F-P1** Der Schlüssel `blueseven.v1` und seine Struktur `{ S, favs }` bleiben bestehen.
@@ -581,6 +583,8 @@ Entschieden: Mixer-Einstellungen gelten pro Song, nicht pro Stil.
 - **F-P11** Ein gespeicherter oder importierter Song bringt seinen eigenen Mixer mit. Beim Laden ersetzt dieser den Mixer des bisherigen Songs vollständig.
 - **F-P12** Der aktuelle Song samt Mixer überlebt das Neuladen der Seite. Für Jazzy Beats bleibt das heutige Verhalten erhalten: Die drei Lautstärken stehen nach dem Neuladen und nach jedem Würfeln so, wie der Nutzer sie eingestellt hat.
 - **F-P13** Pro Kanal und pro Effekt gibt es „Zurücksetzen“, das die Standardwerte des Stils wiederherstellt.
+
+Stand nach Phase 4: Der Mixer des aktuellen Songs steht als zusätzliches Feld `mix` in `S` unter `blueseven.v1`, sobald der Nutzer etwas verstellt hat. Dazu kommen `chordGen`, `style` und `sp` (Stilparameter pro Stil; die Spielweise bleibt in `feel`). `volR`, `volB` und `volD` werden bei jeder Änderung mitgeschrieben. Ein alter Stand ohne `mix` klingt wie zuvor. Ein unbrauchbares `mix` wird verworfen, statt die App zu blockieren.
 
 ## 13. Qualitätsanforderungen
 

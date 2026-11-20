@@ -30,7 +30,9 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/app/modules.js` | Die eine Stelle, an der steht, welche Module die App anbietet |
 | `src/app/state.js` | Zustand `S`, aktuelle Akkordfolge, Speichern in `localStorage` |
 | `src/app/player.js` | Baut aus Folge und Einstellungen den Song, Play/Stopp, Anhören, laufender Akkord |
-| `src/app/ui.js` | Kacheln, Klaviatur, Regler |
+| `src/app/ui.js` | Kacheln, Klaviatur, Regler, Auswahl von Akkord-Generator und Stil |
+| `src/app/ui-mixer.js` | Mixer: Kanäle, Effektspuren und Summe mit Effektreglern, aus dem Song erzeugt |
+| `src/app/ui-params.js` | Bedienelemente aus Parameterbeschreibungen (für Stil- und Effektparameter) |
 | `src/app/main.js` | Event-Handler und Start |
 | `src/core/registry.js` | Verzeichnis der Module (Akkord-Generatoren, Stile, Instrumente, Effekte) |
 | `src/core/params.js` | Gemeinsame Parameterbeschreibung: prüfen, Standardwerte, begrenzen |
@@ -39,6 +41,7 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/core/rng.js` | Zufall mit Startwert für reproduzierbare Folgen und Songs |
 | `src/core/time.js` | Viertel in Sekunden umrechnen, mit Tempo und Swing |
 | `src/core/gain.js` | Reglerwert 0 bis 100 in linearen Pegel und zurück |
+| `src/core/mixmerge.js` | Übernimmt die Mixer-Einstellungen des Nutzers in einen neu erzeugten Song |
 | `src/core/voicing.js` | Stimmführung für Akkordfolgen ohne Lage |
 | `src/styles/jazzy-beats.js` | Stil „Jazzy Beats“: baut aus einer Akkordfolge einen Song als JSON |
 | `src/engine/engine.js` | Spielt jeden gültigen Song ab: Ablauf mit Vorausschau, Werte setzen, Anhören, Position |
