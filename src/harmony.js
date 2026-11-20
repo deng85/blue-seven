@@ -98,4 +98,5 @@ function voiceLoop(chords,key,mode,nine){
   }
   return chords.map((ch,i)=>({notes:out[i],bass:36+(key+ch.off)%12,rn:ch.rn,name:chordName(ch,key,mode,nine)}));
 }
-/*--UI--*/
+
+export {NOTE_FLAT,NOTE_SHARP,QUAL,SCALE,POOL,byId,generate,useSharps,chordName,voiceLoop};

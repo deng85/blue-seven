@@ -1,12 +1,23 @@
 /* ================= Bedienung ================= */
+import {generate} from './harmony.js';
+import {$,S,favs,hist,recent,run,save,load,revoice,pushHist} from './state.js';
+import {buildKeys,render,renderFavs} from './ui.js';
+import {setVols} from './audio.js';
+import {start,stop,audition} from './sequencer.js';
+
+function newLoop(){
+  S.loop=generate(S,recent);
+  recent.push(S.loop.join('-'));if(recent.length>12)recent.shift();
+  revoice();render();save();
+}
 function bind(){
   $('keys12').innerHTML=['C','D♭','D','E♭','E','F','F♯','G','A♭','A','B♭','B'].map((n,i)=>`<button data-v="${i}">${n}</button>`).join('');
   $('tiles').addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i;
     if(b.classList.contains('lock')){S.locks[i]=!S.locks[i];render();save();}
-    else if(!playing)audition(i);
+    else if(!run.playing)audition(i);
   });
-  $('play').addEventListener('click',()=>playing?stop():start());
+  $('play').addEventListener('click',()=>run.playing?stop():start());
   $('gen').addEventListener('click',()=>{pushHist();newLoop();});
   $('back').addEventListener('click',()=>{
     const h=hist.pop();if(!h)return;

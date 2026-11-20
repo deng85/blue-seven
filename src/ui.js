@@ -1,4 +1,7 @@
 /* ================= Oberfläche ================= */
+import {NOTE_FLAT,NOTE_SHARP,byId,useSharps,chordName} from './harmony.js';
+import {$,S,favs,hist,voiced,run,keyName} from './state.js';
+
 function buildKeys(){
   const W=10,H=46,white=[0,2,4,5,7,9,11];let wi=0,ws='',bs='';
   for(let m=36;m<=79;m++){
@@ -14,7 +17,7 @@ function showNotes(i){
   const b=$('k'+v.bass);if(b)b.classList.add('bass');
 }
 function setActive(i){
-  active=i;
+  run.active=i;
   document.querySelectorAll('.tile').forEach((t,j)=>t.classList.toggle('on',j===i));
   showNotes(i<0?0:i);
 }
@@ -24,7 +27,7 @@ function render(){
   tiles.innerHTML=voiced.map((v,i)=>`<div class="slot">
     <button class="tile" data-i="${i}" aria-label="${v.name.root}${v.name.suf} anhören"><span class="rn">${v.rn}</span><span class="root">${v.name.root}</span><span class="suf">${v.name.suf}</span></button>
     <button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button></div>`).join('');
-  setActive(playing?active:-1);
+  setActive(run.playing?run.active:-1);
   $('status').innerHTML=`${keyName()}<br>${S.bpm} BPM`;
   seg('segN',S.n);seg('segMode',S.mode);seg('segFeel',S.feel);seg('segNine',S.nine);
   document.querySelectorAll('#keys12 button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===S.key)));
@@ -45,3 +48,5 @@ function renderFavs(){
   }).join('');
 }
 
+
+export {buildKeys,showNotes,setActive,render,renderFavs};

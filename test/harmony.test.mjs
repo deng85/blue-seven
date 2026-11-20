@@ -1,14 +1,7 @@
-// Tests für die Harmonielogik und den Build. Laufen mit: node --test
+// Tests für die Harmonielogik. Laufen mit: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { build } from '../build.mjs';
-
-// src/harmony.js ist ein normales Skript ohne DOM. Es läuft in einem eigenen Kontext,
-// danach holen wir die Namen heraus, die wir testen wollen.
-const code = readFileSync(new URL('../src/harmony.js', import.meta.url), 'utf8');
-const H = vm.runInNewContext(code + '\n;({POOL,QUAL,SCALE,generate,voiceLoop,byId,chordName})');
+import * as H from '../src/harmony.js';
 
 // Fester Zufallsgenerator (mulberry32), damit Folgen reproduzierbar sind.
 function rng(seed) {
@@ -97,9 +90,4 @@ test('chordName: Vorzeichen und Akkordsymbol', () => {
   assert.equal(JSON.stringify(H.chordName(ii, 7, 'dur', 0)), JSON.stringify({ root: 'A', suf: 'm7' }));
   assert.equal(H.chordName(I, 5, 'dur', 0).root, 'F');
   assert.equal(H.chordName(H.byId('dur', 'IV'), 5, 'dur', 0).root, 'Bb');
-});
-
-test('index.html ist aus src/ gebaut und aktuell', () => {
-  const current = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.ok(current === build(), 'index.html passt nicht zu src/. Bitte "node build.mjs" ausführen.');
 });

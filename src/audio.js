@@ -1,4 +1,6 @@
 /* ================= Klang ================= */
+import {$,S} from './state.js';
+
 let ctx,gate,rBus,bBus,dBus,noiseBuf,live=[],killTimer=0;
 const vol=v=>Math.pow(v/100,1.6);
 function impulse(sec){
@@ -86,3 +88,13 @@ function rim(t,vel){
   const o=osc('triangle',420,t,t+.06),g=ctx.createGain();g.gain.setValueAtTime(.22*vel,t);g.gain.exponentialRampToValueAtTime(.001,t+.05);o.connect(g);g.connect(dBus);
 }
 
+
+/* Was der Ablauf vom Klang braucht, ohne den AudioContext selbst anzufassen */
+const audioNow=()=>ctx.currentTime;
+const latency=()=>ctx.outputLatency||ctx.baseLatency||0;
+function prune(){const now=ctx.currentTime;live=live.filter(x=>x[1]>now);}
+function silence(){live.forEach(x=>{try{x[0].stop();}catch(e){}});live=[];killTimer=0;if(ctx){gate.gain.cancelScheduledValues(ctx.currentTime);gate.gain.setValueAtTime(1,ctx.currentTime);}}
+function cancelFade(){if(killTimer){clearTimeout(killTimer);silence();}}
+function fadeOut(){gate.gain.setTargetAtTime(0,ctx.currentTime,.015);killTimer=setTimeout(silence,90);}
+
+export {initAudio,setVols,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut};
