@@ -24,7 +24,7 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 
 | Datei | Inhalt |
 |---|---|
-| `src/index.html` | Markup mit `/*@include …*/`-Zeilen für Styles und Skripte |
+| `src/index.html` | Markup mit je einer Platzhalter-Zeile für die Styles (`/*@include styles.css*/`) und das Skript (`/*@bundle main.js*/`) |
 | `src/styles.css` | Gestaltung |
 | `src/harmony.js` | Akkordpool, `generate`, `voiceLoop` (ohne DOM, in Node testbar) |
 | `src/state.js` | Zustand `S`, Speichern in `localStorage` |
@@ -33,9 +33,18 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/sequencer.js` | Takt-Scheduler, Start/Stopp |
 | `src/main.js` | Event-Handler und Start |
 
-`node build.mjs` (oder `npm run build`) setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
+Die Dateien in `src/` sind ES-Module. `node build.mjs` (oder `npm run build`) führt sie zu einem einzigen Inline-Skript zusammen und setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt nichts nach. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
 
-`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert) und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
+Damit der Build ohne Pakete auskommt, gilt in `src/` ein eingeschränkter Modulstil:
+
+```js
+import {a, b} from './datei.js';   // nur benannte Importe mit relativem Pfad
+export {c, d};                     // nur eine Liste von Namen, am Dateiende
+```
+
+Nicht erlaubt sind `export default`, `export const`, `import * as`, Umbenennen mit `as`, `import()` und Importe im Kreis. Exportierte Namen müssen `const` oder `function` sein und dürfen nicht neu zugewiesen werden. Bei Verstößen bricht der Build mit einer Meldung ab.
+
+`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert), den Build und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
 
 ## Ausblick
 

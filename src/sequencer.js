@@ -1,5 +1,9 @@
 /* ================= Ablauf ================= */
-let playing=false,timer=0,nextBar=0,barIdx=0,queue=[];
+import {$,S,voiced,run} from './state.js';
+import {setActive,showNotes} from './ui.js';
+import {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut} from './audio.js';
+
+let timer=0,nextBar=0,barIdx=0,queue=[];
 function scheduleBar(t0,i){
   const spb=60/S.bpm,sw=S.swing/100*spb/6,n=voiced.length;
   const T=b=>t0+b*spb+(Math.round(b*2)%2?sw:0);     // Achtel zwischen den Schlägen kommen etwas später
@@ -13,37 +17,38 @@ function scheduleBar(t0,i){
   queue.push({t:t0,i:i%n});
 }
 function tick(){
-  const now=ctx.currentTime;
-  live=live.filter(x=>x[1]>now);
+  const now=audioNow();
+  prune();
   while(nextBar<now+.6){scheduleBar(nextBar,barIdx);nextBar+=240/S.bpm;barIdx=(barIdx+1)%voiced.length;}
 }
 function frame(){
-  if(!playing)return;
-  const now=ctx.currentTime-(ctx.outputLatency||ctx.baseLatency||0);
+  if(!run.playing)return;
+  const now=audioNow()-latency();
   while(queue.length>1&&queue[1].t<=now)queue.shift();
   const cur=queue.length&&queue[0].t<=now?queue[0].i:-1;
-  if(cur!==active)setActive(cur);
+  if(cur!==run.active)setActive(cur);
   requestAnimationFrame(frame);
 }
-function silence(){live.forEach(x=>{try{x[0].stop();}catch(e){}});live=[];killTimer=0;if(ctx){gate.gain.cancelScheduledValues(ctx.currentTime);gate.gain.setValueAtTime(1,ctx.currentTime);}}
 function start(){
   if(!initAudio())return;
-  if(killTimer){clearTimeout(killTimer);silence();}
-  playing=true;queue=[];barIdx=0;nextBar=ctx.currentTime+.15;
+  cancelFade();
+  run.playing=true;queue=[];barIdx=0;nextBar=audioNow()+.15;
   tick();timer=setInterval(tick,50);requestAnimationFrame(frame);
   $('playTxt').textContent='Stop';$('playIco').innerHTML='<path d="M6 5h12v14H6z"/>';
 }
 function stop(){
-  playing=false;clearInterval(timer);queue=[];
-  gate.gain.setTargetAtTime(0,ctx.currentTime,.015);killTimer=setTimeout(silence,90);
+  run.playing=false;clearInterval(timer);queue=[];
+  fadeOut();
   setActive(-1);
   $('playTxt').textContent='Play';$('playIco').innerHTML='<path d="M7 4v16l13-8z"/>';
 }
 function audition(i){
   if(!initAudio())return;
-  if(killTimer){clearTimeout(killTimer);silence();}
-  const v=voiced[i],t=ctx.currentTime+.03;
+  cancelFade();
+  const v=voiced[i],t=audioNow()+.03;
   v.notes.forEach((m,k)=>rhodes(m,t+k*.02,1.6,.7));bass(v.bass,t,1.4,.8);
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
 
+
+export {start,stop,audition};

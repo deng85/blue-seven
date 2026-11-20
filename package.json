@@ -1,6 +1,7 @@
 {
   "name": "blue-seven",
   "private": true,
+  "type": "module",
   "description": "Kleine Loop-DAW für jazzige Akkordfolgen",
   "scripts": {
     "build": "node build.mjs",
