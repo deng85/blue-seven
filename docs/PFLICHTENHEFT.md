@@ -99,7 +99,8 @@ Jede Datei in `src/` ist ein ES-Modul. Abhängigkeiten stehen als `import` am Da
 ```js
 // src/chords/jazzy.js
 import { pick } from '../core/rng.js';
-export const jazzy = { id: 'jazzy', name: 'Jazzy', version: 1, params: [ /* … */ ], generate(params, ctx) { /* … */ } };
+const jazzy = { id: 'jazzy', name: 'Jazzy', version: 1, params: [ /* … */ ], generate(params, ctx) { /* … */ } };
+export { jazzy };
 ```
 
 Welche Module die App anbietet, steht an genau einer Stelle:
@@ -113,12 +114,13 @@ import { deepHouse } from '../styles/deep-house.js';
 import { rhodes } from '../instruments/rhodes.js';
 import { reverb } from '../effects/reverb.js';
 
-export const registry = createRegistry({
+const registry = createRegistry({
   chords:      [jazzy],
   styles:      [jazzyBeats, deepHouse],
   instruments: [rhodes /* … */],
   effects:     [reverb /* … */]
 });
+export { registry };
 
 registry.get('styles', 'deep-house');   // ein Modul
 registry.list('chords');                // alle Akkord-Generatoren, zum Beispiel für die Auswahl in der Oberfläche
@@ -128,8 +130,10 @@ Die Engine bekommt die Registry beim Erzeugen übergeben und kennt Instrumente u
 
 Anforderungen an den Build:
 
+Die Codebeispiele in diesem Dokument lassen die Zeile `export {…};` am Dateiende der Kürze halber weg.
+
 - **F-B1** `build.mjs` führt alle Module ab `src/app/main.js` zu einem einzigen Inline-Skript in `index.html` zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt keine weiteren Skriptdateien, damit sie per Doppelklick ohne Server läuft.
-- **F-B2** Der Build bleibt ein eigenes Node-Skript ohne Pakete. Damit das klein bleibt, gilt in `src/` ein eingeschränkter Modulstil: nur statische Importe mit relativen Pfaden, nur benannte Importe und Exporte, kein `export default`, kein `import * as`, kein dynamisches `import()`, kein `await` auf oberster Ebene.
+- **F-B2** Der Build bleibt ein eigenes Node-Skript ohne Pakete. Damit das klein bleibt, gilt in `src/` ein eingeschränkter Modulstil: nur statische, benannte Importe mit relativen Pfaden (`import {a, b} from './datei.js';`), Exporte nur als Namensliste (`export {a, b};`), kein `export default`, kein `export const`, kein `import * as`, kein Umbenennen mit `as`, kein dynamisches `import()`, kein `await` auf oberster Ebene. Exportierte Namen sind `const` oder `function` und werden nicht neu zugewiesen.
 - **F-B3** Der Build bricht mit einer verständlichen Meldung ab bei Verstößen gegen F-B2, bei fehlenden Dateien, bei unbekannten Exporten und bei Importen im Kreis.
 - **F-B4** Jedes Modul behält im gebauten Skript seinen eigenen Gültigkeitsbereich. Gleiche Namen in zwei Modulen stören sich nicht.
 - **F-B5** `node build.mjs --check` prüft weiter, ob `index.html` zum Stand in `src/` passt.
@@ -217,7 +221,7 @@ Regeln für Stil-Generatoren:
 ### 7.2 Akkord-Generator
 
 ```js
-export const jazzy = {
+const jazzy = {
   id: 'jazzy',
   name: 'Jazzy',
   version: 1,
@@ -253,7 +257,7 @@ Anforderungen:
 ## 8. Schnittstelle Stil-Generator
 
 ```js
-export const deepHouse = {
+const deepHouse = {
   id: 'deep-house',
   name: 'Deep House',
   version: 1,
@@ -455,7 +459,7 @@ engine.on('warning', fn);
 ### 10.2 Instrument
 
 ```js
-export const rhodes = {
+const rhodes = {
   type: 'rhodes',
   name: 'Rhodes',
   params: [ /* Parameterbeschreibungen */ ],
@@ -480,7 +484,7 @@ export const rhodes = {
 ### 10.3 Effekt
 
 ```js
-export const filter = {
+const filter = {
   type: 'filter',
   name: 'Filter',
   params: [ /* Parameterbeschreibungen */ ],
