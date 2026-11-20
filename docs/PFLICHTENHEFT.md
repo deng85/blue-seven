@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Stand | 20.11.2026, Entwurf 1 |
+| Stand | 20.11.2026, Entwurf 2 |
 | Bezug | `HANDOVER.md`, Quelltext in `src/` nach PR 1 (Commit `6014916`) |
-| Status | Zur Abstimmung. Es ist noch nichts davon umgesetzt. |
+| Status | Zur Abstimmung. Es ist noch nichts davon umgesetzt. Getroffene Entscheidungen stehen in Abschnitt 17. |
 
 ## 1. Zusammenfassung
 
@@ -40,7 +40,9 @@ Der heutige Stand, soweit er für den Umbau zählt:
 | `src/state.js` | Ein Zustandsobjekt `S`, gespeichert unter `blueseven.v1` | Mixerwerte sind drei feste Felder (`volR`, `volB`, `volD`) |
 | `src/ui.js`, `src/main.js` | Kacheln, Klaviatur, Regler, Event-Handler | Greifen direkt auf `S`, `voiced` und die Klangfunktionen zu |
 
-Technische Festlegungen aus PR 1, die bestehen bleiben: Quelltext in `src/` als normale Skripte ohne ES-Module, `build.mjs` ohne Abhängigkeiten setzt daraus eine einzelne `index.html`, die gebaute Datei ist eingecheckt, GitHub Pages liefert `main` aus dem Wurzelordner aus.
+Technische Festlegungen aus PR 1, die bestehen bleiben: `build.mjs` ohne Abhängigkeiten setzt aus `src/` eine einzelne `index.html` zusammen, die gebaute Datei ist eingecheckt, GitHub Pages liefert `main` aus dem Wurzelordner aus.
+
+Neu entschieden: Der Quelltext in `src/` wird auf ES-Module umgestellt. Heute sind es normale Skripte, die der Build aneinanderhängt.
 
 ## 3. Ziele
 
@@ -71,7 +73,7 @@ Diese Punkte gehören ausdrücklich nicht zu diesem Vorhaben:
 - **R2 Handy zuerst:** Bedienbar bei 390 px Breite mit dem Daumen. Die Audiolast muss auf einem Mittelklasse-Handy ohne Aussetzer laufen.
 - **R3 Klangtreue:** Der Jazzy-Klang und das Jazzy-Verhalten ändern sich nicht. Die Referenzfolgen in `test/harmony.test.mjs` bleiben gültig.
 - **R4 Speicher:** Der Schlüssel `blueseven.v1` bleibt. Gemerkte Folgen und Einstellungen aus der heutigen Version werden ohne Verlust geladen.
-- **R5 Build:** Weiter `build.mjs` ohne Abhängigkeiten, eine Ausgabedatei, `index.html` eingecheckt, `npm test` braucht nur Node.
+- **R5 Build:** Weiter `build.mjs` ohne Abhängigkeiten, eine Ausgabedatei, `index.html` eingecheckt, `npm test` braucht nur Node. Der Quelltext besteht aus ES-Modulen, die der Build zu einem einzigen Inline-Skript zusammenführt (siehe 6.2).
 - **R6 Bekannte Eigenheiten bleiben:** `AudioContext` erst nach dem ersten Tippen, `iosUnmute`, großer Puffer mit `latencyHint: 'playback'`, Anzeige mit Ausgleich über `outputLatency`.
 - **R7 Sprache:** Oberfläche auf Deutsch.
 
@@ -88,23 +90,50 @@ Diese Punkte gehören ausdrücklich nicht zu diesem Vorhaben:
 | Mixer, Transport, Engine | Kern, Song-Format, Instrumente und Effekte nur über die Registry | Generatoren, DOM, App-Zustand |
 | App (Zustand, Oberfläche) | alles, aber nur über die öffentlichen Schnittstellen | Interna der Module |
 
-Die Regel „Stil kennt keinen Akkord-Generator“ wird per Test abgesichert (siehe Abnahmekriterium A4).
+Diese Tabelle wird per Test abgesichert: Er liest die `import`-Zeilen aller Dateien und prüft sie gegen die erlaubten Abhängigkeiten (siehe Abnahmekriterien A4 und A6).
 
-### 6.2 Module ohne ES-Module
+### 6.2 ES-Module und Build
 
-Da `src/` aus normalen Skripten besteht, die zu einem Inline-Skript verkettet werden, registrieren sich Module in einem einzigen globalen Namensraum. Vorschlag `BS`:
+Jede Datei in `src/` ist ein ES-Modul. Abhängigkeiten stehen als `import` am Dateianfang und sind damit sichtbar und prüfbar. Es gibt keine globalen Namen mehr wie heute `POOL`, `S` oder `rhodes`.
 
 ```js
-BS.register('chords',     { id: 'jazzy',       ... });
-BS.register('style',      { id: 'jazzy-beats', ... });
-BS.register('instrument', { type: 'rhodes',    ... });
-BS.register('effect',     { type: 'reverb',    ... });
-
-BS.get('style', 'deep-house');   // ein Modul
-BS.list('chords');               // alle Akkord-Generatoren, zum Beispiel für die Auswahl in der Oberfläche
+// src/chords/jazzy.js
+import { pick } from '../core/rng.js';
+export const jazzy = { id: 'jazzy', name: 'Jazzy', version: 1, params: [ /* … */ ], generate(params, ctx) { /* … */ } };
 ```
 
-Jede Moduldatei kapselt ihre Interna in einer Funktion und legt nur die Registrierung nach außen. Globale Namen wie heute `POOL`, `S` oder `rhodes` entfallen schrittweise.
+Welche Module die App anbietet, steht an genau einer Stelle:
+
+```js
+// src/app/modules.js
+import { createRegistry } from '../core/registry.js';
+import { jazzy } from '../chords/jazzy.js';
+import { jazzyBeats } from '../styles/jazzy-beats.js';
+import { deepHouse } from '../styles/deep-house.js';
+import { rhodes } from '../instruments/rhodes.js';
+import { reverb } from '../effects/reverb.js';
+
+export const registry = createRegistry({
+  chords:      [jazzy],
+  styles:      [jazzyBeats, deepHouse],
+  instruments: [rhodes /* … */],
+  effects:     [reverb /* … */]
+});
+
+registry.get('styles', 'deep-house');   // ein Modul
+registry.list('chords');                // alle Akkord-Generatoren, zum Beispiel für die Auswahl in der Oberfläche
+```
+
+Die Engine bekommt die Registry beim Erzeugen übergeben und kennt Instrumente und Effekte nur darüber.
+
+Anforderungen an den Build:
+
+- **F-B1** `build.mjs` führt alle Module ab `src/app/main.js` zu einem einzigen Inline-Skript in `index.html` zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt keine weiteren Skriptdateien, damit sie per Doppelklick ohne Server läuft.
+- **F-B2** Der Build bleibt ein eigenes Node-Skript ohne Pakete. Damit das klein bleibt, gilt in `src/` ein eingeschränkter Modulstil: nur statische Importe mit relativen Pfaden, nur benannte Importe und Exporte, kein `export default`, kein `import * as`, kein dynamisches `import()`, kein `await` auf oberster Ebene.
+- **F-B3** Der Build bricht mit einer verständlichen Meldung ab bei Verstößen gegen F-B2, bei fehlenden Dateien, bei unbekannten Exporten und bei Importen im Kreis.
+- **F-B4** Jedes Modul behält im gebauten Skript seinen eigenen Gültigkeitsbereich. Gleiche Namen in zwei Modulen stören sich nicht.
+- **F-B5** `node build.mjs --check` prüft weiter, ob `index.html` zum Stand in `src/` passt.
+- **F-B6** `package.json` bekommt `"type": "module"`, damit Tests die Module aus `src/` direkt importieren. Der Umweg über `vm` in `test/harmony.test.mjs` entfällt.
 
 ### 6.3 Vorgeschlagene Ordnerstruktur
 
@@ -112,18 +141,18 @@ Jede Moduldatei kapselt ihre Interna in einer Funktion und legt nur die Registri
 src/
   index.html
   styles.css
-  core/         registry.js  params.js  rng.js  format.js
+  core/         registry.js  params.js  rng.js  format.js  voicing.js
   chords/       jazzy.js
   styles/       jazzy-beats.js  deep-house.js
   engine/       transport.js  mixer.js  engine.js
   instruments/  rhodes.js  bass.js  drums.js  …
   effects/      filter.js  tremolo.js  reverb.js  compressor.js  delay.js  ducker.js
-  app/          state.js  ui.js  ui-mixer.js  main.js
+  app/          modules.js  state.js  ui.js  ui-mixer.js  main.js
 test/
 docs/
 ```
 
-`build.mjs` muss dafür Pfade mit Unterordnern in den `/*@include …*/`-Zeilen erlauben. Das ist die einzige nötige Änderung am Build.
+`src/index.html` enthält nur noch Markup, die Zeile für `styles.css` und eine Zeile für das Skript, an deren Stelle der Build das zusammengeführte Skript setzt.
 
 ### 6.4 Gemeinsame Parameterbeschreibung
 
@@ -173,7 +202,7 @@ Erlaubte Typen: `number`, `enum`, `bool`. Fehlende Werte werden mit `default` ge
 | `chords[].root` | ja | Grundton als absolute Tonklasse 0 bis 11 |
 | `chords[].tones` | ja | Akkordtöne als Halbtöne über dem Grundton, aufsteigend, inklusive Erweiterungen (14 = None) |
 | `chords[].duration` | ja | Länge in Vierteln. Jazzy liefert 4, also einen Takt |
-| `chords[].voicing` | nein | Vorgeschlagene Lage als MIDI-Noten, tiefste zuerst |
+| `chords[].voicing` | nein | Vorgeschlagene Lage als MIDI-Noten, tiefste zuerst. Ein Vorschlag, den der Stil nicht übernehmen muss |
 | `chords[].bass` | nein | Basston als Tonklasse, falls er vom Grundton abweicht |
 | `chords[].label` | nein | Texte für die Anzeige |
 | `chords[].source` | nein | Daten, die nur der erzeugende Generator versteht, zum Beispiel die Stufen-ID |
@@ -182,12 +211,13 @@ Regeln für Stil-Generatoren:
 
 - Musikalisch zählen nur `key`, `mode`, `root`, `tones`, `duration`, `voicing` und `bass`. `label` ist nur Anzeige, `generator` und `source` dürfen nicht gelesen werden.
 - Ein Stil muss mit jeder Anzahl Akkorde ab 1, mit beliebigen `duration`-Werten und mit Voicings aus 3 oder mehr Tönen zurechtkommen.
-- Fehlt `voicing`, erzeugt der Stil eine Lage aus `root` und `tones`. Dafür stellt der Kern eine Hilfsfunktion bereit, damit nicht jeder Stil eine eigene Stimmführung braucht.
+- Die Lage gehört dem Stil. Er darf `voicing` übernehmen oder aus `root` und `tones` eine eigene Lage bilden, zum Beispiel tiefere und engere Stabs in Deep House. Verbindlich sind nur die Tonklassen: Der Stil spielt keine Töne, die nicht in `tones` stehen, außer Durchgangstönen im Bass.
+- Fehlt `voicing`, muss der Stil selbst eine Lage bilden. Dafür stellt der Kern in `core/voicing.js` eine Stimmführung bereit, damit nicht jeder Stil eine eigene braucht.
 
 ### 7.2 Akkord-Generator
 
 ```js
-BS.register('chords', {
+export const jazzy = {
   id: 'jazzy',
   name: 'Jazzy',
   version: 1,
@@ -199,7 +229,7 @@ BS.register('chords', {
   // Optional: dieselbe Folge unter geänderten Parametern neu ausgeben,
   // zum Beispiel andere Tonart oder None an/aus, ohne neu zu würfeln.
   update(progression, params, ctx) { return progression; }
-});
+};
 ```
 
 `ctx` enthält:
@@ -223,7 +253,7 @@ Anforderungen:
 ## 8. Schnittstelle Stil-Generator
 
 ```js
-BS.register('style', {
+export const deepHouse = {
   id: 'deep-house',
   name: 'Deep House',
   version: 1,
@@ -232,14 +262,14 @@ BS.register('style', {
 
   // Baut aus einer Akkordfolge einen vollständigen Song.
   generate(progression, params, ctx) { return song; }
-});
+};
 ```
 
 `ctx` enthält `rnd` und `bpm`. Der Rückgabewert ist ein Song nach Abschnitt 9.
 
 - **F-S1** Ein Stil-Generator ist eine reine Funktion und läuft in Node ohne Browser. Er erzeugt keinen Ton.
 - **F-S2** Ein Stil-Generator liest von der Akkordfolge nur die in 7.1 als musikalisch markierten Felder.
-- **F-S3** Kanal- und Spur-IDs eines Stils sind stabil. Mixer-Einstellungen des Nutzers bleiben dadurch beim erneuten Würfeln erhalten.
+- **F-S3** Kanal- und Spur-IDs eines Stils sind stabil. Dadurch lassen sich die Mixer-Einstellungen eines Songs übernehmen, wenn sein Inhalt neu erzeugt wird (siehe 12.1).
 - **F-S4** Der erzeugte Song besteht die Formatprüfung aus 9.6.
 - **F-S5** Gleiche Eingaben und gleicher Zufallsstartwert ergeben denselben Song.
 
@@ -247,6 +277,7 @@ BS.register('style', {
 
 Bildet `scheduleBar` aus `src/sequencer.js` als Daten ab:
 
+- Übernimmt die Lage aus `voicing`, damit die Stimmführung von Jazzy wie heute klingt.
 - Parameter `feel` mit `pad`, `comp`, `arp` und denselben Zeiten, Längen und Anschlagstärken wie heute, inklusive der kleinen Versätze zwischen den Akkordtönen (16 ms, 8 ms).
 - Bass auf 1 und 2-und sowie ein Durchgangston einen Halbton unter dem nächsten Grundton auf 4-und.
 - Hi-Hat in Achteln, Kick auf 1 und 2-und, Rim auf 2 und 4.
@@ -257,7 +288,8 @@ Bildet `scheduleBar` aus `src/sequencer.js` als Daten ab:
 ### 8.2 Stil „Deep House“
 
 - **F-D1 Tempo:** 116 bis 128 BPM, Standard 122. Kein Swing als Standard, aber einstellbar.
-- **F-D2 Harmonie:** Die Akkordfolge wird als Schleife über den ganzen Song gelegt. Der Stil darf die Akkordlängen strecken (zum Beispiel jeder Akkord zwei Takte), ändert aber weder Reihenfolge noch Töne.
+- **F-D2 Harmonie:** Die Akkordfolge wird als Schleife über den ganzen Song gelegt. Der Stil darf die Akkordlängen strecken (zum Beispiel jeder Akkord zwei Takte), ändert aber weder Reihenfolge noch Tonklassen der Akkorde.
+- **F-D2a Lage:** Deep House bestimmt die Lage von Stabs und Pad selbst aus `root` und `tones` und ist nicht an `voicing` gebunden.
 - **F-D3 Arrangement:** Abschnitte in Phrasen von 8 oder 16 Takten, mindestens Intro, Aufbau, Drop, Break, zweiter Drop und Outro. Gesamtlänge etwa 3 bis 5 Minuten, über einen Parameter in Stufen wählbar (kurz, mittel, lang).
 - **F-D4 Spuren:** mindestens Kick (Four on the Floor), Clap auf 2 und 4, geschlossene Hi-Hat, offene Hi-Hat im Offbeat, Percussion, Bass, Akkord-Stabs, Pad. Welche Spuren in welchem Abschnitt spielen, ist Teil des Arrangements.
 - **F-D5 Bass:** Linie aus Grundton und Akkordtönen der jeweiligen Akkorde, rhythmisch zwischen die Kicks gesetzt.
@@ -388,14 +420,15 @@ track/<spur>/instrument/<parameter>
 
 ### 9.6 Formatprüfung
 
-Der Kern stellt `BS.format.checkSong(song)` und `BS.format.checkChords(progression)` bereit. Sie liefern eine Liste verständlicher Fehler, zum Beispiel „Spur ‚stabs‘ verweist auf unbekanntes Pattern ‚stabB‘“. Geprüft werden Pflichtfelder, Typen, Wertebereiche und Verweise (Pattern, Kanal, Send-Ziel, Automationsadresse). Die Prüfung läuft in Node und wird in den Tests auf jeden Generator angewendet.
+`core/format.js` exportiert `checkSong(song)` und `checkChords(progression)`. Sie liefern eine Liste verständlicher Fehler, zum Beispiel „Spur ‚stabs‘ verweist auf unbekanntes Pattern ‚stabB‘“. Geprüft werden Pflichtfelder, Typen, Wertebereiche und Verweise (Pattern, Kanal, Send-Ziel, Automationsadresse). Die Prüfung läuft in Node und wird in den Tests auf jeden Generator angewendet.
 
 ## 10. Engine
 
 ### 10.1 Öffentliche Schnittstelle
 
 ```js
-const engine = BS.createEngine();
+import { createEngine } from '../engine/engine.js';
+const engine = createEngine(registry);
 
 engine.init();                         // AudioContext anlegen, nur nach Nutzeraktion
 engine.load(song);                     // Song prüfen, Instrumente, Effekte und Mixer aufbauen
@@ -415,14 +448,14 @@ engine.on('warning', fn);
 - **F-E3** Geplant wird wie heute mit Vorausschau: ein Zeitgeber alle 50 ms plant alle Noten der nächsten 0,6 s. Geplant wird nach Zeitfenster, nicht mehr taktweise, damit lange Songs den Speicher nicht füllen.
 - **F-E4** `setParam` wirkt sofort und ohne Knackser (geglättet wie heute mit etwa 20 ms). Tempo und Swing wirken ab den noch nicht geplanten Noten.
 - **F-E5** `swap` ersetzt den Song an der nächsten Taktgrenze, ohne dass die Wiedergabe abreißt. Das deckt das heutige Verhalten ab, dass neue Akkorde und eine andere Spielweise ab dem nächsten Takt greifen.
-- **F-E6** Vom Nutzer gesetzte Werte haben Vorrang vor Automation, bis der Song neu geladen wird oder der Nutzer den Wert zurücksetzt.
+- **F-E6** Vom Nutzer gesetzte Werte haben Vorrang vor Automation, bis der Nutzer den Wert zurücksetzt. Sie werden in den Song geschrieben (siehe 12.1).
 - **F-E7** Stopp blendet wie heute über ein Gate in etwa 15 ms aus und beendet alle laufenden Klangquellen.
 - **F-E8** `iosUnmute` und der Start des `AudioContext` nach dem ersten Tippen bleiben erhalten.
 
 ### 10.2 Instrument
 
 ```js
-BS.register('instrument', {
+export const rhodes = {
   type: 'rhodes',
   name: 'Rhodes',
   params: [ /* Parameterbeschreibungen */ ],
@@ -436,7 +469,7 @@ BS.register('instrument', {
       dispose() {}
     };
   }
-});
+};
 ```
 
 - **F-I1** Ein Instrument kennt nur den `AudioContext` und seinen Ausgang. Es weiß nichts von Takten, Songs oder dem Mixer.
@@ -447,7 +480,7 @@ BS.register('instrument', {
 ### 10.3 Effekt
 
 ```js
-BS.register('effect', {
+export const filter = {
   type: 'filter',
   name: 'Filter',
   params: [ /* Parameterbeschreibungen */ ],
@@ -461,7 +494,7 @@ BS.register('effect', {
       dispose() {}
     };
   }
-});
+};
 ```
 
 Mindestumfang an Effekten:
@@ -501,7 +534,7 @@ Wichtig für die Klangtreue: Heute greift der Hall-Send des Rhodes hinter Tiefpa
 - **F-U6 Mixer:** Für jeden Kanal Lautstärke, Mute und Solo sofort sichtbar. Panorama, Sends und Effekte liegen in einer aufklappbaren Detailansicht pro Kanal.
 - **F-U7 Effekte:** Jeder Effekt zeigt seine Parameter als Regler aus der Parameterbeschreibung sowie einen Schalter für Bypass. Das gilt auch für Effektspuren und Summe.
 - **F-U8 Handy:** Alles ist bei 390 px Breite ohne waagerechtes Scrollen der Seite bedienbar. Bedienelemente haben mindestens 44 px Höhe. Der Mixer darf als eigener Bereich waagerecht scrollen.
-- **F-U9 Neu erzeugen:** Würfeln erzeugt eine neue Akkordfolge und daraus einen neuen Song. Zusätzlich gibt es „Song neu bauen“, das bei gleicher Akkordfolge nur den Stil neu würfelt. Mixer-Einstellungen des Nutzers bleiben in beiden Fällen erhalten.
+- **F-U9 Neu erzeugen:** Würfeln erzeugt eine neue Akkordfolge und daraus einen neuen Song. Zusätzlich gibt es „Song neu bauen“, das bei gleicher Akkordfolge nur den Stil neu würfelt. In beiden Fällen bleibt es derselbe Song, seine Mixer-Einstellungen bleiben erhalten (siehe 12.1).
 - **F-U10 Export und Import:** Der aktuelle Song lässt sich als JSON-Datei speichern und in die Zwischenablage kopieren. Eine JSON-Datei oder eingefügter Text lässt sich laden und abspielen, auch wenn sie nicht aus einem der eingebauten Generatoren stammt.
 - **F-U11 Fehlermeldungen:** Ungültige Songs und fehlende Module werden in normalem Deutsch gemeldet.
 
@@ -510,10 +543,21 @@ Wichtig für die Klangtreue: Heute greift der Hall-Send des Rhodes hinter Tiefpa
 - **F-P1** Der Schlüssel `blueseven.v1` und seine Struktur `{ S, favs }` bleiben bestehen.
 - **F-P2** Ein gespeicherter Stand der heutigen Version wird ohne Verlust geladen: Tonart, Tongeschlecht, Anzahl, Tempo, Swing, Würze, Spielweise, None, die drei Lautstärken, die aktuelle Folge, gehaltene Plätze und alle gemerkten Folgen.
 - **F-P3** Neue Einstellungen kommen nur als zusätzliche Felder hinzu. Bestehende Felder behalten Namen und Bedeutung, sodass auch eine ältere Version der App einen neueren Stand noch lesen kann.
-- **F-P4** `volR`, `volB` und `volD` werden weiter gepflegt und entsprechen den Kanälen Rhodes, Bass und Drums von Jazzy Beats.
+- **F-P4** `volR`, `volB` und `volD` werden weiter gepflegt. Sie entsprechen den Kanälen Rhodes, Bass und Drums des aktuellen Jazzy-Beats-Songs.
 - **F-P5** Gemerkte Folgen bleiben Akkordfolgen im heutigen Format (`key`, `mode`, `loop`). Sie lassen sich mit jedem Stil laden.
 - **F-P6** Vom Nutzer gespeicherte Songs liegen unter einem eigenen, neuen Schlüssel, damit `blueseven.v1` klein bleibt und die Speichergrenze des Browsers nicht die Einstellungen gefährdet.
 - **F-P7** Die Anbindung an `window.claude.hot` in `src/main.js` bleibt funktionsfähig.
+
+### 12.1 Mixer-Einstellungen gehören zum Song
+
+Entschieden: Mixer-Einstellungen gelten pro Song, nicht pro Stil.
+
+- **F-P8** Alle Mixer- und Effektwerte, die der Nutzer einstellt, werden in den Abschnitt `mixer` des aktuellen Songs geschrieben. Es gibt keinen zweiten Ort für diese Werte.
+- **F-P9** Wird der Inhalt des aktuellen Songs neu erzeugt (Würfeln, „Song neu bauen“, Änderung von Akkord- oder Stilparametern), übernimmt die App die Einstellungen des Nutzers in den neuen Stand. Zugeordnet wird über die stabilen IDs von Kanälen, Effektspuren, Inserts und Sends. Was es im neuen Stand nicht mehr gibt, entfällt.
+- **F-P10** Ein neuer Song beginnt mit den Standardwerten seines Stils. Ein neuer Song entsteht durch „Neuer Song“ oder durch den Wechsel des Stils.
+- **F-P11** Ein gespeicherter oder importierter Song bringt seinen eigenen Mixer mit. Beim Laden ersetzt dieser den Mixer des bisherigen Songs vollständig.
+- **F-P12** Der aktuelle Song samt Mixer überlebt das Neuladen der Seite. Für Jazzy Beats bleibt das heutige Verhalten erhalten: Die drei Lautstärken stehen nach dem Neuladen und nach jedem Würfeln so, wie der Nutzer sie eingestellt hat.
+- **F-P13** Pro Kanal und pro Effekt gibt es „Zurücksetzen“, das die Standardwerte des Stils wiederherstellt.
 
 ## 13. Qualitätsanforderungen
 
@@ -521,8 +565,8 @@ Wichtig für die Klangtreue: Heute greift der Hall-Send des Rhodes hinter Tiefpa
 - **Q2 Last:** Höchstens 32 gleichzeitige Stimmen über alle Instrumente, höchstens ein Faltungshall pro Song als Standard der eingebauten Stile.
 - **Q3 Erzeugungszeit:** Ein Stil-Generator braucht für einen ganzen Song auf dem Handy unter 200 ms. Die Bedienung bleibt dabei flüssig.
 - **Q4 Größe:** Ein Deep-House-Song bleibt als JSON unter 200 kB. Die gebaute `index.html` bleibt unter 300 kB.
-- **Q5 Testbarkeit:** Kern, Akkord-Generatoren, Stil-Generatoren und Formatprüfung laufen in Node. `npm test` bleibt ohne Pakete lauffähig.
-- **Q6 Erweiterbarkeit:** Ein neuer Akkord-Generator, Stil, Effekt oder ein neues Instrument braucht eine neue Datei, eine Zeile in `src/index.html` und keine Änderung an bestehenden Modulen.
+- **Q5 Testbarkeit:** Kern, Akkord-Generatoren, Stil-Generatoren und Formatprüfung laufen in Node und werden von den Tests direkt importiert. `npm test` bleibt ohne Pakete lauffähig.
+- **Q6 Erweiterbarkeit:** Ein neuer Akkord-Generator, Stil, Effekt oder ein neues Instrument braucht eine neue Datei, einen Eintrag in `src/app/modules.js` und keine Änderung an bestehenden Modulen.
 - **Q7 Rückverfolgbarkeit:** Jede Phase aus Abschnitt 14 kommt als eigener Pull Request, innerhalb davon ein Commit pro Änderung.
 
 ## 14. Migrationsplan in Phasen
@@ -531,13 +575,15 @@ Nach jeder Phase ist die App vollständig benutzbar und klingt wie zuvor. Jede P
 
 | Phase | Inhalt | Ergebnis | Nachweis |
 |---|---|---|---|
-| 0 Fundament | Namensraum `BS` mit Registry, Parameterbeschreibung, Zufallsfunktion mit Startwert. `build.mjs` erlaubt Unterordner. Ordnerstruktur anlegen | Keine sichtbare Änderung | Bestehende Tests grün, `index.html` funktional unverändert |
+| 0 Fundament | Umstellung von `src/` auf ES-Module, zunächst mit den heutigen Dateien. `build.mjs` führt Module zu einem Inline-Skript zusammen (F-B1 bis F-B6). Danach Registry, Parameterbeschreibung, Zufallsfunktion mit Startwert und Ordnerstruktur | Keine sichtbare Änderung | Bestehende Tests grün, Tests für den Build, `index.html` läuft per Doppelklick und verhält sich wie zuvor |
 | 1 Akkord-Schnittstelle | `harmony.js` wird zum Modul `chords/jazzy.js`. Format `blueseven.chords` und dessen Prüfung. App arbeitet intern mit der Akkordfolge | Keine sichtbare Änderung | Referenzfolgen aus `test/harmony.test.mjs` unverändert, neue Tests für das Format |
 | 2 Song-Format und Jazzy Beats | Format `blueseven.song` mit Prüfung. Stil `jazzy-beats` erzeugt den Song aus der Akkordfolge. Noch keine Wiedergabe daraus | Keine sichtbare Änderung | Test vergleicht die Noten des Songs mit einer Aufzeichnung der Aufrufe des heutigen `scheduleBar` für alle drei Spielweisen |
 | 3 Engine | Instrumente, Effekte, Mixer und Transport nach Abschnitt 10. `audio.js` und `sequencer.js` entfallen. Die App spielt nur noch Song-JSON | Klang und Verhalten wie zuvor | Vergleich der geplanten Ereignisse alt gegen neu, Hörprobe durch den Nutzer auf dem Handy |
 | 4 Mixer und Effekte in der Oberfläche | Kanäle mit Mute, Solo, Panorama, Sends, Effektspuren, Effektregler aus Parameterbeschreibung. Auswahl von Akkord-Generator und Stil | Erste sichtbare Erweiterung | Screenshot bei 390 px, Bedienprobe |
 | 5 Deep House | Neue Instrumente, Effekte `delay` und `ducker`, Automation, Stil `deep-house`, Songübersicht mit Abschnitten | Ganze Songs | Formatprüfung, Unabhängigkeitstest, Hörproben in Runden |
 | 6 Songs sichern | Export, Import, Speichern von Songs, Migrationen für Formatversionen | Songs bleiben erhalten | Test mit gespeichertem Song der Version 1 |
+
+Phase 0 ändert als einzige die gebaute `index.html` von Grund auf, weil aus aneinandergehängten Skripten gekapselte Module werden. Sie kommt deshalb als eigener Pull Request ohne weitere Änderungen.
 
 Die Phasen 0 bis 3 sind reiner Umbau ohne neue Funktion. Sie tragen das größte Risiko für den Klang und werden deshalb klein gehalten und einzeln geprüft. Die Phasen 4 und 5 lassen sich bei Bedarf tauschen.
 
@@ -548,17 +594,19 @@ Die Phasen 0 bis 3 sind reiner Umbau ohne neue Funktion. Sie tragen das größte
 | A1 | Die Referenzfolgen und Referenz-Voicings in `test/harmony.test.mjs` sind unverändert gültig | `npm test` |
 | A2 | Jazzy Beats erzeugt für alle drei Spielweisen dieselben Noten (Zeit, Dauer, Tonhöhe, Anschlag, Versatz) wie das heutige `scheduleBar` | Automatischer Vergleich mit Aufzeichnung vom Stand `6014916` |
 | A3 | Jazzy Beats klingt auf dem Handy des Nutzers wie vor dem Umbau | Hörprobe durch den Nutzer |
-| A4 | Jeder Stil-Generator läuft in einer Umgebung, in der kein Akkord-Generator geladen ist, mit einer von Hand geschriebenen Akkordfolge und liefert einen gültigen Song | Automatischer Test |
+| A4 | Kein Stil-Generator importiert etwas aus `chords/`, `engine/`, `instruments/`, `effects/` oder `app/`. Jeder Stil liefert mit einer von Hand geschriebenen Akkordfolge ohne `voicing`, `label` und `source` einen gültigen Song | Automatischer Test auf den `import`-Zeilen und auf dem Ergebnis |
 | A5 | Jeder Stil liefert mit einer Akkordfolge aus einem zweiten Akkord-Generator, mit 1, 3, 4 und 8 Akkorden und mit ungleichen Akkordlängen einen gültigen Song | Automatischer Test |
-| A6 | Kein Generator verwendet `AudioContext`, `document` oder `window` | Automatischer Test: Die Generatoren laufen in einem leeren Kontext |
+| A6 | Die Abhängigkeiten aller Module entsprechen der Tabelle in 6.1. Kein Generator verwendet `AudioContext`, `document` oder `window` | Automatischer Test auf den `import`-Zeilen, dazu laufen die Generatoren in Node ohne Browser |
 | A7 | Die Engine spielt einen von Hand geschriebenen Song ab, der aus keinem Generator stammt, mit zwei Spuren, einem Insert und einer Effektspur | Beispieldatei in `test/`, Hörprobe |
 | A8 | Ein mit der heutigen Version gespeicherter Stand unter `blueseven.v1` wird mit allen Einstellungen und gemerkten Folgen geladen | Automatischer Test mit gespeichertem Beispielstand |
 | A9 | Ein Deep-House-Song hat mindestens sechs Abschnitte, dauert 3 bis 5 Minuten und nutzt mindestens die Spuren aus F-D4 | Automatischer Test auf dem Song-JSON |
+| A9a | Deep House bildet eigene Lagen: Die Töne der Stabs gehören zu den Tonklassen des jeweiligen Akkords, auch wenn die Akkordfolge kein `voicing` enthält | Automatischer Test auf dem Song-JSON |
 | A10 | Lautstärke, Mute, Solo, Panorama und Send jedes Kanals sowie jeder Effektparameter lassen sich im Lauf verstellen, ohne Knackser und ohne Neustart | Bedienprobe |
 | A11 | Gleicher Zufallsstartwert und gleiche Eingaben ergeben einen identischen Song | Automatischer Test |
 | A12 | Ein Song mit höherer Formatversion oder unbekanntem Instrument führt zu einer Meldung, nicht zu einem Absturz | Automatischer Test und Bedienprobe |
-| A13 | Die gebaute `index.html` läuft per Doppelklick ohne Server und ohne Konsolenfehler, bei 390 px Breite ohne waagerechtes Scrollen der Seite | Screenshot und Konsole |
+| A13 | Die gebaute `index.html` enthält keine `import`-Anweisung, lädt keine weiteren Skriptdateien, läuft per Doppelklick ohne Server und ohne Konsolenfehler, bei 390 px Breite ohne waagerechtes Scrollen der Seite | Automatischer Test auf der Datei, Screenshot und Konsole über `file://` |
 | A14 | Ein exportierter Song lässt sich wieder importieren und ergibt dieselbe Wiedergabe | Automatischer Vergleich des JSON, Hörprobe |
+| A14a | Mixer-Einstellungen bleiben beim Würfeln und nach dem Neuladen der Seite erhalten. Ein geladener Song bringt seine eigenen Einstellungen mit, ein neuer Song beginnt mit den Standardwerten des Stils | Automatischer Test der Übernahme (F-P9), Bedienprobe |
 | A15 | Ein Deep-House-Song läuft auf dem Handy des Nutzers ohne Aussetzer durch | Hörprobe durch den Nutzer |
 
 ## 16. Risiken
@@ -568,24 +616,33 @@ Die Phasen 0 bis 3 sind reiner Umbau ohne neue Funktion. Sie tragen das größte
 | Der Klang von Jazzy ändert sich unbemerkt durch den neuen Signalweg | Phasen 0 bis 3 ohne neue Funktionen, Vergleich der geplanten Ereignisse, Hörprobe vor jeder Zusammenführung |
 | Zu viel Audiolast auf dem Handy durch mehr Spuren und Effekte | Stimmenbegrenzung, ein Hall pro Song, Obergrenzen aus Abschnitt 13, früher Test eines dichten Abschnitts auf dem Handy |
 | Das Song-Format muss kurz nach Version 1 geändert werden | Format in Phase 2 zuerst nur intern nutzen, Export erst in Phase 6 freigeben |
-| Ein globaler Namensraum führt zu versteckten Abhängigkeiten zwischen Modulen | Tests laden Module einzeln in leere Kontexte (A4, A6) |
+| Der eigene Build für ES-Module wird aufwendiger als gedacht oder erzeugt Fehler, die nur in der gebauten Datei auftreten | Eingeschränkter Modulstil (F-B2), eigene Tests für den Build, Phase 0 als eigener Pull Request, Prüfung der gebauten Datei über `file://` (A13) |
+| Mixer-Einstellungen gehen beim Neuerzeugen verloren oder landen am falschen Kanal | Stabile IDs (F-S3), Test der Übernahme (A14a) |
 | Die Oberfläche wird auf dem Handy zu voll | Mixer und Effekte in aufklappbaren Bereichen, Details erst auf Wunsch |
 | Der Speicher im Browser läuft durch gespeicherte Songs voll | Eigener Schlüssel für Songs, Obergrenze für die Anzahl, Hinweis beim Erreichen |
 
-## 17. Offene Fragen
+## 17. Entscheidungen und offene Fragen
 
-1. **ES-Module:** Bleiben wir bei normalen Skripten mit dem Namensraum `BS`, oder steigen wir in `src/` auf ES-Module um? Dann müsste `build.mjs` sie zu einem Inline-Skript zusammenführen. Dieses Pflichtenheft geht von normalen Skripten aus.
-2. **Jazzy Beats als Song:** Bleibt Jazzy Beats eine Endlosschleife wie heute, oder soll es später auch ein Arrangement bekommen?
-3. **Akkordlänge in Deep House:** Ein Takt pro Akkord, zwei Takte oder wählbar?
-4. **Voicing:** Soll das Voicing immer vom Akkord-Generator kommen, oder dürfen Stile die Lage selbst bestimmen, zum Beispiel tiefere Stabs in Deep House?
-5. **Mixer-Einstellungen:** Gelten sie pro Stil (Vorschlag) oder pro gespeichertem Song?
-6. **Gemerkte Folgen:** Soll „Merken“ weiter nur die Akkordfolge sichern, oder zusätzlich Stil und Songparameter?
-7. **Tonart und Tongeschlecht:** Bleiben sie Einstellungen der App für alle Akkord-Generatoren (Vorschlag), oder darf ein Generator eigene Tonleitern mitbringen?
-8. **Umfang Deep House im ersten Wurf:** Reicht ein fester Aufbau mit Varianten, oder soll der Aufbau selbst gewürfelt werden?
-9. **Noten bearbeiten:** Ist ein einfacher Editor für später gewünscht? Das hätte Einfluss darauf, ob Patterns stabile IDs brauchen.
-10. **Export als Audio oder MIDI:** Wie wichtig ist das, und in welcher Reihenfolge nach Phase 6?
-11. **Claude-Artifact:** Soll die zweite Kopie als Artifact weiter gepflegt werden? Dort ist das Speichern von Dateien per Skript nicht möglich, der Export ginge nur über die Zwischenablage.
-12. **Name:** Bleibt es bei „Blue Seven“, oder soll die App mit dem Umbau „Jazzy DAW“ heißen?
+### 17.1 Entschieden am 20.11.2026
+
+| Frage | Entscheidung | Eingearbeitet in |
+|---|---|---|
+| Normale Skripte oder ES-Module in `src/`? | ES-Module. Der Build führt sie weiter zu einer einzelnen `index.html` zusammen, die per Doppelklick läuft | 6.2, R5, Phase 0, A4, A6, A13 |
+| Darf ein Stil die Akkordlage selbst bestimmen? | Ja. `voicing` ist ein Vorschlag, verbindlich sind nur die Tonklassen | 7.1, 8.1, F-D2a, A9a |
+| Mixer-Einstellungen pro Stil oder pro Song? | Pro Song | 12.1, F-S3, F-U9, A14a |
+
+### 17.2 Noch offen
+
+1. **Jazzy Beats als Song:** Bleibt Jazzy Beats eine Endlosschleife wie heute, oder soll es später auch ein Arrangement bekommen?
+2. **Akkordlänge in Deep House:** Ein Takt pro Akkord, zwei Takte oder wählbar?
+3. **Gemerkte Folgen:** Soll „Merken“ weiter nur die Akkordfolge sichern, oder zusätzlich Stil und Songparameter?
+4. **Tonart und Tongeschlecht:** Bleiben sie Einstellungen der App für alle Akkord-Generatoren (Vorschlag), oder darf ein Generator eigene Tonleitern mitbringen?
+5. **Umfang Deep House im ersten Wurf:** Reicht ein fester Aufbau mit Varianten, oder soll der Aufbau selbst gewürfelt werden?
+6. **Noten bearbeiten:** Ist ein einfacher Editor für später gewünscht? Das hätte Einfluss darauf, ob Patterns stabile IDs brauchen.
+7. **Export als Audio oder MIDI:** Wie wichtig ist das, und in welcher Reihenfolge nach Phase 6?
+8. **Claude-Artifact:** Soll die zweite Kopie als Artifact weiter gepflegt werden? Dort ist das Speichern von Dateien per Skript nicht möglich, der Export ginge nur über die Zwischenablage.
+9. **Name:** Bleibt es bei „Blue Seven“, oder soll die App mit dem Umbau „Jazzy DAW“ heißen?
+10. **Stilwechsel:** Nach 12.1 beginnt beim Wechsel des Stils ein neuer Song mit Standardwerten. Soll der bisherige Song dabei automatisch gesichert werden, damit seine Einstellungen nicht verloren gehen?
 
 ## 18. Glossar
 
