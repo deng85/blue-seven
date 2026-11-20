@@ -54,6 +54,7 @@ function bind(){
   $('selChords').addEventListener('change',e=>{S.chordGen=e.target.value;hist.length=0;recent.length=0;S.loop=[];S.locks=Array(S.n).fill(false);newLoop();});
   bindMixer({
     set(address,value){setMix(address,value);save();},
+    song:currentSong,
     reset(path){resetMix(path);renderMixer(currentSong());save();}
   });
   $('segNine').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.nine=+b.dataset.v;revoice();refresh();render();save();});

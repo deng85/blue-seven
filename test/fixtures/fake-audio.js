@@ -58,7 +58,7 @@ class FakeAudioContext {
   createConvolver() { const n = new FakeNode(this, 'convolver'); n.buffer = null; return n; }
   createDynamicsCompressor() {
     const n = new FakeNode(this, 'compressor');
-    n.threshold = new FakeParam(this, -24); n.ratio = new FakeParam(this, 12); return n;
+    n.threshold = new FakeParam(this, -24); n.knee = new FakeParam(this, 30); n.ratio = new FakeParam(this, 12); return n;
   }
   createOscillator() {
     const n = new FakeSource(this, 'osc'); n.type = 'sine';

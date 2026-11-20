@@ -63,3 +63,18 @@ test('Regler aus der Parameterbeschreibung: Zahl, Auswahl, Kurve exp, Anzeige', 
   assert.match(seg, /aria-pressed="true">Bandpass/);
   assert.match(controlHtml({ id: 'a', name: '<b>', type: 'bool', default: true }, undefined, 'x'), /&lt;b&gt;.*aria-pressed="true"/);
 });
+
+test('Kompressor: Kennlinie mit Schwelle, weichem Knie und Verhältnis', async () => {
+  const { compressor, transfer } = await import('../src/effects/compressor.js');
+  const p = { threshold: -20, knee: 10, ratio: 4 };
+  assert.equal(transfer(p, -40), -40);                       // unter der Schwelle unverändert
+  assert.equal(transfer(p, -20), -20);
+  assert.ok(Math.abs(transfer(p, -10) - (-20 + 10 * 1.25 / 2)) < 1e-12);   // Ende des Knies, stetig
+  assert.ok(Math.abs((transfer(p, 0) - transfer(p, -8)) - 8 / 4) < 1e-12);  // danach 4 : 1
+  assert.ok(Math.abs(transfer({ ...p, knee: 0 }, -12) - -18) < 1e-12);      // hartes Knie
+  for (let x = -60; x < 0; x++) assert.ok(transfer(p, x + 1) > transfer(p, x), 'steigt überall');
+  const g = compressor.graph({ threshold: -16, knee: 30, ratio: 4 });
+  assert.equal(g.points.length, 61);
+  assert.deepEqual(g.marks.map(m => m.x), [-16, 0]);
+  assert.equal(compressor.params.find(x => x.id === 'knee').default, 30, 'Standard des Browsers, Klang wie bisher');
+});
