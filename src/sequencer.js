@@ -1,6 +1,6 @@
 /* ================= Ablauf ================= */
-import {$,S,voiced,run} from './state.js';
-import {setActive,showNotes} from './ui.js';
+import {$,S,voiced,run} from './app/state.js';
+import {setActive,showNotes} from './app/ui.js';
 import {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut} from './audio.js';
 
 let timer=0,nextBar=0,barIdx=0,queue=[];

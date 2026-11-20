@@ -1,5 +1,5 @@
 /* ================= Oberfläche ================= */
-import {NOTE_FLAT,NOTE_SHARP,byId,useSharps,chordName} from './harmony.js';
+import {NOTE_FLAT,NOTE_SHARP,byId,useSharps,chordName} from '../harmony.js';
 import {$,S,favs,hist,voiced,run,keyName} from './state.js';
 
 function buildKeys(){

@@ -271,7 +271,7 @@ function voiceLoop(chords,key,mode,nine){
 return {NOTE_FLAT,NOTE_SHARP,QUAL,SCALE,POOL,byId,generate,useSharps,chordName,voiceLoop};
 })();
 
-/* ---------- state.js ---------- */
+/* ---------- app/state.js ---------- */
 const __mod1=(function(){
 const {NOTE_FLAT,NOTE_SHARP,POOL,byId,useSharps,voiceLoop}=__mod0;
 /* ================= Zustand ================= */
@@ -302,7 +302,7 @@ function pushHist(){if(S.loop.length){hist.push({key:S.key,mode:S.mode,n:S.n,loo
 return {$,S,favs,hist,recent,voiced,run,save,load,keyName,revoice,pushHist};
 })();
 
-/* ---------- ui.js ---------- */
+/* ---------- app/ui.js ---------- */
 const __mod2=(function(){
 const {NOTE_FLAT,NOTE_SHARP,byId,useSharps,chordName}=__mod0;
 const {$,S,favs,hist,voiced,run,keyName}=__mod1;
@@ -521,7 +521,7 @@ function audition(i){
 return {start,stop,audition};
 })();
 
-/* ---------- main.js ---------- */
+/* ---------- app/main.js ---------- */
 const __mod5=(function(){
 const {generate}=__mod0;
 const {$,S,favs,hist,recent,run,save,load,revoice,pushHist}=__mod1;

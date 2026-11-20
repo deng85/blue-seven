@@ -1,9 +1,9 @@
 /* ================= Bedienung ================= */
-import {generate} from './harmony.js';
+import {generate} from '../harmony.js';
 import {$,S,favs,hist,recent,run,save,load,revoice,pushHist} from './state.js';
 import {buildKeys,render,renderFavs} from './ui.js';
-import {setVols} from './audio.js';
-import {start,stop,audition} from './sequencer.js';
+import {setVols} from '../audio.js';
+import {start,stop,audition} from '../sequencer.js';
 
 function newLoop(){
   S.loop=generate(S,recent);

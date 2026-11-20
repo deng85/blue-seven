@@ -24,14 +24,19 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 
 | Datei | Inhalt |
 |---|---|
-| `src/index.html` | Markup mit je einer Platzhalter-Zeile für die Styles (`/*@include styles.css*/`) und das Skript (`/*@bundle main.js*/`) |
+| `src/index.html` | Markup mit je einer Platzhalter-Zeile für die Styles (`/*@include styles.css*/`) und das Skript (`/*@bundle app/main.js*/`) |
 | `src/styles.css` | Gestaltung |
 | `src/harmony.js` | Akkordpool, `generate`, `voiceLoop` (ohne DOM, in Node testbar) |
-| `src/state.js` | Zustand `S`, Speichern in `localStorage` |
-| `src/ui.js` | Kacheln, Klaviatur, Regler |
+| `src/app/state.js` | Zustand `S`, Speichern in `localStorage` |
+| `src/app/ui.js` | Kacheln, Klaviatur, Regler |
 | `src/audio.js` | Rhodes, Bass, Drums (Web Audio) |
 | `src/sequencer.js` | Takt-Scheduler, Start/Stopp |
-| `src/main.js` | Event-Handler und Start |
+| `src/app/main.js` | Event-Handler und Start |
+| `src/core/registry.js` | Verzeichnis der Module (Akkord-Generatoren, Stile, Instrumente, Effekte) |
+| `src/core/params.js` | Gemeinsame Parameterbeschreibung: prüfen, Standardwerte, begrenzen |
+| `src/core/rng.js` | Zufall mit Startwert für reproduzierbare Folgen und Songs |
+
+Der Kern in `src/core/` ist das Fundament für den Umbau zur modularen DAW und wird von der App noch nicht benutzt. `harmony.js`, `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/` und ziehen in den Phasen 1 und 3 des Pflichtenhefts um. Welcher Ordner aus welchem importieren darf, prüft ein Test.
 
 Die Dateien in `src/` sind ES-Module. `node build.mjs` (oder `npm run build`) führt sie zu einem einzigen Inline-Skript zusammen und setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt nichts nach. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
 
