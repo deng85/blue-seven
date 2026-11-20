@@ -14,11 +14,17 @@ const SMOOTH=.02;   // Glättung für Pegel und Panorama in Sekunden, wie bisher
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,+v||0));
 
 // Ein Effekt im Signalweg, mit Umgehung (bypass) ohne Knacken. Unbekannte Effekte werden durchgereicht.
-function createInsert(ac,spec,registry,warn,where){
+function createInsert(ac,spec,registry,warn,where,shared){
   const input=ac.createGain(),output=ac.createGain(),wet=ac.createGain(),dry=ac.createGain();
   const mod=registry.get('effects',spec.type);
   let fx=null,params={};
-  if(mod){params=normalize(mod.params||[],spec.params);fx=mod.create(ac,params);input.connect(fx.input);fx.output.connect(wet);}
+  if(mod){
+    params=normalize(mod.params||[],spec.params);fx=mod.create(ac,params);input.connect(fx.input);fx.output.connect(wet);
+    // Effekte, die das Tempo brauchen (Echo in Notenwerten) oder auf die Noten einer Spur reagieren (Ducker).
+    if(fx.setTempo){fx.setTempo(shared.bpm);shared.tempo.push(fx);}
+    const src=spec.params&&spec.params.source;
+    if(fx.trigger&&typeof src==='string'){if(!shared.triggers.has(src))shared.triggers.set(src,[]);shared.triggers.get(src).push(fx);}
+  }
   else warn(`${where}: Den Effekt „${spec.type}“ gibt es nicht. Er wird übersprungen.`);
   input.connect(dry);wet.connect(output);dry.connect(output);
   const route=(bypass,t)=>{
@@ -38,23 +44,24 @@ function createInsert(ac,spec,registry,warn,where){
     dispose(){if(fx&&fx.dispose)fx.dispose();input.disconnect();output.disconnect();}
   };
 }
-function createChain(ac,list,registry,warn,where,input){
+function createChain(ac,list,registry,warn,where,input,shared){
   let node=input;const map=new Map();
-  for(const spec of list||[]){const x=createInsert(ac,spec,registry,warn,`${where}, Effekt „${spec.id}“`);node.connect(x.input);node=x.output;map.set(spec.id,x);}
+  for(const spec of list||[]){const x=createInsert(ac,spec,registry,warn,`${where}, Effekt „${spec.id}“`,shared);node.connect(x.input);node=x.output;map.set(spec.id,x);}
   return {output:node,inserts:map};
 }
 
-function buildMixer(ac,mx,registry,warn){
+function buildMixer(ac,mx,registry,warn,bpm){
   const nodes=[],track=n=>(nodes.push(n),n);
+  const shared={bpm:bpm||120,tempo:[],triggers:new Map()};
   // Summe
   const masterIn=track(ac.createGain());
-  const mc=createChain(ac,mx.master.inserts,registry,warn,'Summe',masterIn);
+  const mc=createChain(ac,mx.master.inserts,registry,warn,'Summe',masterIn,shared);
   const masterOut=track(ac.createGain());masterOut.gain.value=mx.master.gain;mc.output.connect(masterOut);
   const master={inserts:mc.inserts,fader:masterOut};
   // Effektspuren
   const returns=new Map();
   for(const r of mx.returns){
-    const input=track(ac.createGain()),c=createChain(ac,r.inserts,registry,warn,`Effektspur „${r.name}“`,input);
+    const input=track(ac.createGain()),c=createChain(ac,r.inserts,registry,warn,`Effektspur „${r.name}“`,input,shared);
     const fader=track(ac.createGain()),mute=track(ac.createGain());
     fader.gain.value=r.gain;mute.gain.value=r.mute?0:1;
     c.output.connect(fader);fader.connect(mute);mute.connect(masterIn);
@@ -63,7 +70,7 @@ function buildMixer(ac,mx,registry,warn){
   // Kanäle
   const channels=new Map(),state=new Map();
   for(const ch of mx.channels){
-    const input=track(ac.createGain()),c=createChain(ac,ch.inserts,registry,warn,`Kanal „${ch.name}“`,input);
+    const input=track(ac.createGain()),c=createChain(ac,ch.inserts,registry,warn,`Kanal „${ch.name}“`,input,shared);
     const fader=track(ac.createGain());
     fader.channelCount=2;fader.channelCountMode='explicit';fader.channelInterpretation='speakers';
     fader.gain.value=ch.gain;c.output.connect(fader);
@@ -137,6 +144,10 @@ function buildMixer(ac,mx,registry,warn){
     output:masterOut,
     channelInput:id=>{const c=channels.get(id);return c&&c.input;},
     set,apply,
+    // Gibt das Tempo an alle Effekte weiter, die es brauchen.
+    setTempo(v,t){for(const fx of shared.tempo)fx.setTempo(v,t);},
+    // Effekte, die bei jeder Note der Spur trackId ausgelöst werden wollen.
+    triggersFor:trackId=>shared.triggers.get(trackId)||[],
     dispose(){
       for(const owner of [master,...returns.values(),...channels.values()])for(const x of owner.inserts.values())x.dispose();
       for(const n of nodes){try{n.disconnect();}catch(e){}}

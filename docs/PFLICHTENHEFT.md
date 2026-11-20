@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Stand | 20.11.2026, Entwurf 3 |
+| Stand | 20.11.2026, Entwurf 3, fortgeschrieben bis Phase 5 |
 | Bezug | `HANDOVER.md`, Quelltext in `src/` nach PR 1 (Commit `6014916`) |
 | Status | Zur Abstimmung. Es ist noch nichts davon umgesetzt. Getroffene Entscheidungen stehen in Abschnitt 17. |
 
@@ -63,7 +63,7 @@ Diese Punkte gehören ausdrücklich nicht zu diesem Vorhaben:
 - Keine Audioaufnahme und keine Samples aus Dateien. Alle Klänge werden weiter synthetisch erzeugt.
 - Kein Noten-Editor (Piano Roll) und kein freies Verschieben von Clips. Der Nutzer steuert Generatoren, Mixer und Effekte, bearbeitet aber keine einzelnen Noten.
 - Kein Plug-in-Standard wie VST oder WAM und kein Laden fremder Module zur Laufzeit.
-- Kein MIDI-Eingang, kein MIDI-Export und kein WAV-Export in diesem Schritt. Das Song-Format soll beides später möglich machen.
+- Kein MIDI-Eingang und kein MIDI-Export in diesem Schritt. Das Song-Format soll beides später möglich machen. Der WAV-Export ist seit dem 20.11.2026 Teil des Vorhabens (F-U12, Phase 7).
 - Kein Desktop-Layout. Es bleibt bei „erstmal nur Handy“.
 - Kein Wechsel des Build-Werkzeugs und keine Laufzeit-Abhängigkeiten.
 
@@ -321,6 +321,8 @@ Abgesichert wird das durch `test/jazzy-beats.test.mjs`. Er vergleicht die Noten 
 
 Der Klang von Deep House ist Geschmackssache und wird in Runden mit dem Nutzer abgestimmt. Dieses Pflichtenheft legt nur Struktur und Mindestumfang fest.
 
+Stand nach Phase 5: `styles/deep-house.js` ist umgesetzt. Parameter sind Länge (kurz, mittel, lang mit 104, 128 und 144 Takten, bei 122 BPM also etwa 3:25 bis 4:45), Energie, Stab-Rhythmus (synkopiert, Offbeat, sparsam) und Takte pro Akkord (2 oder 1). Der Aufbau ist fest: Intro, Aufbau, Drop, Break, zweiter Aufbau, zweiter Drop, Outro. Gewürfelt werden die Varianten innerhalb der Abschnitte (Percussion, Basslinie, Fills), reproduzierbar über den Startwert. Spuren: Kick, Clap, Hi-Hat, offene Hi-Hat, Percussion, Bass, Stabs, Pad und ein Rauschanstieg vor Drop und Break. Kanäle: Kick, Drums, Bass, Stabs, Pad und FX, dazu die Effektspuren Hall und Echo und ein Kompressor auf der Summe. Bass, Stabs und Pad pumpen über je einen `ducker` mit der Kick als Quelle. Die Tiefpässe von Stabs und Pad fahren als Automation. Der Song endet nach dem Outro (`loop: false`). Neue Klänge nach F-D10: Das Instrument `drums` hat den Parameter `kit` (Jazz wie bisher oder House mit eigener Kick, Clap, offener Hi-Hat und Shaker), dazu kommen die Instrumente `synth` (Bass, Stabs, Pad) und `riser`.
+
 ## 9. Song-Format
 
 ### 9.1 Grundsätze
@@ -451,25 +453,27 @@ import { createEngine } from '../engine/engine.js';
 const engine = createEngine(registry);  // zweites Argument nur für Tests: AudioContext und Zeitgeber
 
 engine.init();                         // AudioContext anlegen, nur nach Nutzeraktion. Fehler mit code 'unsupported' oder 'failed'
-engine.load(song);                     // Song prüfen und übernehmen. Im Lauf gilt er ab dem nächsten Takt
+engine.load(song, { overrides });      // Song prüfen und übernehmen. Im Lauf gilt er ab dem nächsten Takt. overrides: siehe F-E6
 engine.play({ from: 0 });              // Start an einer Position in Vierteln
 engine.stop();
+engine.seek(beat);                     // im Lauf an eine Stelle springen, gilt ab dem nächsten Takt
 engine.setParam(address, value);       // Wert sofort ändern, Adressen aus 9.4, wird in den Song geschrieben
 engine.audition([{ track, notes: [{ p, v, s, o }] }]);  // Noten sofort anspielen, s und o in Sekunden
 engine.position();                     // { beat, song } mit Ausgleich der Ausgabelatenz, oder null
 engine.song();                         // Kopie des Songs mit allen gesetzten Werten
+engine.overrides();                    // Adressen, die der Nutzer gesetzt hat
 engine.on('ended', fn);
 engine.on('warning', fn);
 ```
 
-Umgesetzt in Phase 3, mit diesen Abweichungen vom ersten Entwurf: `swap` ist in `load` aufgegangen, weil ein neuer Song im Lauf immer an der nächsten Taktgrenze greifen soll. Die Position wird mit `position()` abgefragt statt gemeldet: Die Oberfläche zeichnet ohnehin in jedem Bild (`requestAnimationFrame`), und welcher Akkord läuft, rechnet die App aus `song.meta.chords` aus. `audition` nimmt mehrere Spuren auf einmal, weil das Antippen eines Akkords Rhodes und Bass spielt. `seek` kommt mit der Songübersicht in Phase 5.
+Umgesetzt in Phase 3, mit diesen Abweichungen vom ersten Entwurf: `swap` ist in `load` aufgegangen, weil ein neuer Song im Lauf immer an der nächsten Taktgrenze greifen soll. Die Position wird mit `position()` abgefragt statt gemeldet: Die Oberfläche zeichnet ohnehin in jedem Bild (`requestAnimationFrame`), und welcher Akkord läuft, rechnet die App aus `song.meta.chords` aus. `audition` nimmt mehrere Spuren auf einmal, weil das Antippen eines Akkords Rhodes und Bass spielt. `seek` ist mit der Songübersicht in Phase 5 dazugekommen.
 
 - **F-E1** Die Engine spielt jedes Song-JSON ab, das die Formatprüfung besteht. Sie enthält keine Sonderfälle für einzelne Stile.
 - **F-E2** Die Engine greift nicht auf das DOM und nicht auf den App-Zustand zu. Meldungen gehen über Ereignisse an die App.
 - **F-E3** Geplant wird wie heute taktweise mit Vorausschau: Ein Zeitgeber alle 50 ms plant jeden Takt, der in den nächsten 0,6 s beginnt. Im Voraus liegt damit nie mehr als etwa ein Takt, auch lange Songs füllen den Speicher nicht. Taktweise bleibt es, weil nur so Tempo und ein neuer Song genau wie bisher an der Taktgrenze greifen.
 - **F-E4** `setParam` wirkt sofort und ohne Knackser (geglättet wie heute mit etwa 20 ms). Tempo und Swing wirken ab dem nächsten noch nicht geplanten Takt.
 - **F-E5** `load` im Lauf ersetzt den Song an der nächsten Taktgrenze, ohne dass die Wiedergabe abreißt. Das deckt das heutige Verhalten ab, dass neue Akkorde und eine andere Spielweise ab dem nächsten Takt greifen. Hat der neue Song denselben Aufbau (Spuren, Instrumente, Kanäle, Effekte, Sends), bleibt der Signalweg bestehen und nur geänderte Werte werden nachgeführt. Sonst wird neu aufgebaut, und der alte Signalweg klingt noch 4 s aus.
-- **F-E6** Vom Nutzer gesetzte Werte haben Vorrang vor Automation, bis der Nutzer den Wert zurücksetzt. Sie werden in den Song geschrieben (siehe 12.1). Die Automation selbst kommt mit Phase 5.
+- **F-E6** Vom Nutzer gesetzte Werte haben Vorrang vor Automation, bis der Nutzer den Wert zurücksetzt. Sie werden in den Song geschrieben (siehe 12.1). Seit Phase 5 tastet die Engine die Automation in Sechzehnteln ab und setzt die Werte geglättet. Welche Adressen der Nutzer gesetzt hat, merkt sie sich als Liste (`overrides`). Die App speichert diese Liste und gibt sie bei `load` wieder mit. „Zurücksetzen“ nimmt die Adresse aus der Liste, danach folgt der Wert wieder der Automation.
 - **F-E7** Stopp blendet wie heute über ein Gate in etwa 15 ms aus und beendet alle laufenden Klangquellen.
 - **F-E8** `iosUnmute` und der Start des `AudioContext` nach dem ersten Tippen bleiben erhalten. `iosUnmute` braucht das DOM und liegt deshalb in `app/player.js`, nicht in der Engine.
 
@@ -510,7 +514,7 @@ const filter = {
     return {
       input, output,                           // AudioNodes
       setParam(id, value, time) {},
-      automate(id, points) {},                 // optional: Stützpunkte direkt als AudioParam-Rampen planen
+      setTempo(bpm, time) {},                  // optional: für Effekte mit Zeiten in Notenwerten
       trigger(time) {},                        // optional: nur für Effekte, die auf Noten reagieren
       dispose() {}
     };
@@ -533,6 +537,8 @@ Mindestumfang an Effekten:
 - **F-X2** Jeder Effektparameter aus der Parameterbeschreibung ist über die Oberfläche steuerbar und über Automation ansprechbar.
 - **F-X3** `bypass` schaltet einen Effekt ohne Knackser aus dem Signalweg.
 - **F-X4** `ducker` senkt den Pegel kurz zu jedem Notenbeginn der Quellspur. Die Engine ruft dafür `trigger` mit den geplanten Zeiten auf. Es wird kein Audiosignal analysiert.
+
+Stand nach Phase 5: `delay` (Zeit als 1/16, 1/8, punktierte 1/8 oder 1/4, Rückkopplung, Höhendämpfung, Anteil) und `ducker` (Quellspur, Tiefe, Erholzeit) sind umgesetzt. Das zunächst vorgesehene `automate` ist entfallen, weil die Engine Automation für alle Effekte gleich über `setParam` setzt. Dafür gibt es `setTempo`, damit das Echo dem Tempo folgt.
 
 ### 10.4 Mixer
 
@@ -563,6 +569,15 @@ Nachweis aus Phase 3: Ein Test in Node rechnet für jeden Kanal den Pegel vom In
 
 Stand nach Phase 4: Umgesetzt sind F-U1 (zwei Auswahllisten aus der Registry, bisher mit je einem Eintrag), F-U3, F-U6, F-U7 und F-U8. Der Mixer entsteht vollständig aus dem Song: ein Streifen pro Kanal, Effektspur und Summe, aufklappbar mit Panorama, Sends und Effekten. Effektparameter mit `live:false` (Dauer des Halls) gelten erst beim Loslassen des Reglers. Ein Effekt kann mit `graph(params)` ein Schaubild beschreiben, das die Oberfläche zeichnet und beim Verstellen mitführt. Der Kompressor zeigt so seine Kennlinie mit Schwelle, Knie und Verhältnis und hat dafür den Parameter Knie bekommen (Standard 30 dB wie im Browser, also derselbe Klang). Die Regler des Akkord-Generators (Anzahl, Tongeschlecht, Würze, Farbton) sind noch von Hand gebaut und werden mit dem zweiten Akkord-Generator verallgemeinert. „Song neu bauen“ (F-U9) und F-U4, F-U5 kommen mit Deep House in Phase 5, F-U10 in Phase 6.
 
+Stand nach Phase 5: F-U4, F-U5 und F-U9 sind umgesetzt. Hat ein Song mehr als einen Abschnitt, erscheint der Bereich „Song“ mit einer Leiste der Abschnitte, der laufenden Position und einem Knopf pro Abschnitt zum Hinspringen. Läuft nichts, startet das Antippen die Wiedergabe an dieser Stelle. Aufklappbar darunter zeigt eine Balkenansicht, in welchen Abschnitten welche Spur spielt. „Song neu bauen“ erscheint nur bei Stilen, die würfeln. Ein Wechsel des Stils stellt Tempo und Swing auf die Standardwerte des Stils. Noch offen: Regler mit Automation bewegen sich in der Oberfläche nicht mit, sie zeigen den Wert aus dem Song.
+
+- **F-U12 WAV-Export** (aufgenommen am 20.11.2026, Phase 7): Der aktuelle Song lässt sich als WAV-Datei speichern, so wie er klingt, also mit allen Mixer- und Effekteinstellungen des Nutzers. Zwei Einstellungen:
+  - **Wiederholungen:** wie oft der Song hintereinander in der Datei steht, 1 bis 16, Standard 1 für Songs mit Arrangement und 4 für Loops wie Jazzy Beats. Die Wiederholungen gehen ohne Lücke ineinander über, Hall und Echo klingen dabei wie im Lauf in den nächsten Durchgang hinein.
+  - **Ende:** „mit Ausklang“ lässt Hall, Echo und ausklingende Töne nach dem letzten Takt zu Ende klingen, bis der Pegel unter −60 dB fällt, höchstens 10 s. „Hart abgeschnitten“ beendet die Datei genau am Ende des letzten Takts.
+  - **Format:** Stereo, 16 Bit, 44,1 kHz. Der Dateiname enthält Stil, Tonart und Tempo.
+  - **Technik:** Gerechnet wird ohne Echtzeit mit einem `OfflineAudioContext` und derselben Engine, denselben Instrumenten und Effekten wie bei der Wiedergabe. Es gibt keinen zweiten Klangweg. Während der Berechnung zeigt die App den Fortschritt und lässt sich abbrechen. Die laufende Wiedergabe wird dafür angehalten.
+  - **Grenze:** Ist die Datei voraussichtlich größer als 100 MB (etwa 9 Minuten), weist die App vorher darauf hin.
+
 ## 12. Speicherung und Kompatibilität
 
 - **F-P1** Der Schlüssel `blueseven.v1` und seine Struktur `{ S, favs }` bleiben bestehen.
@@ -583,6 +598,8 @@ Entschieden: Mixer-Einstellungen gelten pro Song, nicht pro Stil.
 - **F-P11** Ein gespeicherter oder importierter Song bringt seinen eigenen Mixer mit. Beim Laden ersetzt dieser den Mixer des bisherigen Songs vollständig.
 - **F-P12** Der aktuelle Song samt Mixer überlebt das Neuladen der Seite. Für Jazzy Beats bleibt das heutige Verhalten erhalten: Die drei Lautstärken stehen nach dem Neuladen und nach jedem Würfeln so, wie der Nutzer sie eingestellt hat.
 - **F-P13** Pro Kanal und pro Effekt gibt es „Zurücksetzen“, das die Standardwerte des Stils wiederherstellt.
+
+Stand nach Phase 5: Neu in `S` sind `seed` (Startwert des Zufalls für den Stil, „Song neu bauen“ würfelt ihn neu) und `ov` (die vom Nutzer gesetzten Adressen nach F-E6). Die Einstellungen für den WAV-Export (Wiederholungen, Ende) kommen in Phase 7 als weitere zusätzliche Felder dazu.
 
 Stand nach Phase 4: Der Mixer des aktuellen Songs steht als zusätzliches Feld `mix` in `S` unter `blueseven.v1`, sobald der Nutzer etwas verstellt hat. Dazu kommen `chordGen`, `style` und `sp` (Stilparameter pro Stil; die Spielweise bleibt in `feel`). `volR`, `volB` und `volD` werden bei jeder Änderung mitgeschrieben. Ein alter Stand ohne `mix` klingt wie zuvor. Ein unbrauchbares `mix` wird verworfen, statt die App zu blockieren.
 
@@ -609,6 +626,7 @@ Nach jeder Phase ist die App vollständig benutzbar und klingt wie zuvor. Jede P
 | 4 Mixer und Effekte in der Oberfläche | Kanäle mit Mute, Solo, Panorama, Sends, Effektspuren, Effektregler aus Parameterbeschreibung. Auswahl von Akkord-Generator und Stil | Erste sichtbare Erweiterung | Screenshot bei 390 px, Bedienprobe |
 | 5 Deep House | Neue Instrumente, Effekte `delay` und `ducker`, Automation, Stil `deep-house`, Songübersicht mit Abschnitten | Ganze Songs | Formatprüfung, Unabhängigkeitstest, Hörproben in Runden |
 | 6 Songs sichern | Export, Import, Speichern von Songs, Migrationen für Formatversionen | Songs bleiben erhalten | Test mit gespeichertem Song der Version 1 |
+| 7 WAV-Export | Song ohne Echtzeit als WAV rechnen (F-U12), mit Wiederholungen und wahlweise mit Ausklang oder hart abgeschnitten | Songs lassen sich als Audiodatei weitergeben | Test auf Länge und Kopf der Datei, Hörprobe der Datei |
 
 Phase 0 ändert als einzige die gebaute `index.html` von Grund auf, weil aus aneinandergehängten Skripten gekapselte Module werden. Sie kommt deshalb als eigener Pull Request ohne weitere Änderungen.
 
@@ -635,6 +653,7 @@ Die Phasen 0 bis 3 sind reiner Umbau ohne neue Funktion. Sie tragen das größte
 | A14 | Ein exportierter Song lässt sich wieder importieren und ergibt dieselbe Wiedergabe | Automatischer Vergleich des JSON, Hörprobe |
 | A14a | Mixer-Einstellungen bleiben beim Würfeln und nach dem Neuladen der Seite erhalten. Ein geladener Song bringt seine eigenen Einstellungen mit, ein neuer Song beginnt mit den Standardwerten des Stils | Automatischer Test der Übernahme (F-P9), Bedienprobe |
 | A15 | Ein Deep-House-Song läuft auf dem Handy des Nutzers ohne Aussetzer durch | Hörprobe durch den Nutzer |
+| A16 | Die exportierte WAV-Datei ist eine gültige Stereo-Datei mit 16 Bit. „Hart abgeschnitten“ ergibt genau Songlänge mal Wiederholungen, auf ein Sample genau. „Mit Ausklang“ ist länger und endet leiser als −60 dB. Der Export klingt wie die Wiedergabe | Automatischer Test auf Kopf und Länge der Datei, Hörprobe durch den Nutzer |
 
 ## 16. Risiken
 
@@ -657,6 +676,7 @@ Die Phasen 0 bis 3 sind reiner Umbau ohne neue Funktion. Sie tragen das größte
 | Normale Skripte oder ES-Module in `src/`? | ES-Module. Der Build führt sie weiter zu einer einzelnen `index.html` zusammen, die per Doppelklick läuft | 6.2, R5, Phase 0, A4, A6, A13 |
 | Darf ein Stil die Akkordlage selbst bestimmen? | Ja. `voicing` ist ein Vorschlag, verbindlich sind nur die Tonklassen | 7.1, 8.1, F-D2a, A9a |
 | Mixer-Einstellungen pro Stil oder pro Song? | Pro Song | 12.1, F-S3, F-U9, A14a |
+| Export als Audiodatei? | Ja, als WAV, mit einstellbarer Zahl der Wiederholungen und wahlweise mit Ausklang von Hall und Echo oder hart abgeschnitten nach dem letzten Takt | F-U12, Phase 7, A16 |
 | Den bisherigen Song beim Stilwechsel automatisch sichern? | Vorerst nein. Der neue Song beginnt mit Standardwerten, die Einstellungen des alten entfallen, wenn er nicht vorher gespeichert wurde | F-P10 |
 
 ### 17.2 Arbeitsannahmen
@@ -671,7 +691,7 @@ Diese Fragen sind nicht ausdrücklich entschieden. Damit die Umsetzung nicht war
 | 4 | Gehören Tonart und Tongeschlecht der App oder dem Akkord-Generator? | Der App, mit `dur` und `moll` wie heute | Phase 1 |
 | 5 | Fester oder gewürfelter Aufbau in Deep House? | Fester Aufbau mit Varianten je Abschnitt | Phase 5 |
 | 6 | Später ein Editor für Noten? | Nicht geplant. Patterns bekommen trotzdem sprechende, stabile IDs, weil das nichts kostet | Phase 2 |
-| 7 | Export als Audio oder MIDI | Nach Phase 6, MIDI vor Audio | später |
+| 7 | Export als MIDI | Nicht geplant, bis der Nutzer danach fragt. Der Export als Audio ist entschieden (17.1) | später |
 | 8 | Wird die Kopie als Claude-Artifact weiter gepflegt? | Während des Umbaus nicht. Die Anbindung an `window.claude.hot` bleibt im Code erhalten | Phase 0 |
 | 9 | Name der App | Bleibt „Blue Seven“ | – |
 

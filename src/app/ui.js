@@ -46,6 +46,7 @@ function renderModules(){
   $('selStyle').innerHTML=opts(registry.list('styles'),S.style);
   const st=styleMod(),p=styleParams();
   $('styleParams').innerHTML=(st.params||[]).map(x=>controlHtml(x,p[x.id],'sp-'+x.id,`data-style-param="${esc(x.id)}"`)).join('');
+  $('rebuild').hidden=!st.random;
   if(st.tempo){
     $('bpm').min=st.tempo.min;$('bpm').max=st.tempo.max;
     S.bpm=Math.min(st.tempo.max,Math.max(st.tempo.min,S.bpm));

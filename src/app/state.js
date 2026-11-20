@@ -1,11 +1,14 @@
 /* ================= Zustand ================= */
 import {MODES,noteName} from '../core/notes.js';
 import {normalize} from '../core/params.js';
+import {randomSeed} from '../core/rng.js';
 import {registry} from './modules.js';
 
 const $=id=>document.getElementById(id);
 // Seit Phase 4 zusätzlich: chordGen und style (gewählte Module), sp (Stilparameter pro Stil) und mix
-// (Mixer des aktuellen Songs, erst vorhanden, wenn der Nutzer etwas verstellt hat). Die alten Felder behalten ihre Bedeutung.
+// (Mixer des aktuellen Songs, erst vorhanden, wenn der Nutzer etwas verstellt hat). Seit Phase 5: seed (Zufallsstartwert
+// des Songs) und ov (Adressen, die der Nutzer gesetzt hat und die Vorrang vor der Automation haben).
+// Die alten Felder behalten ihre Bedeutung.
 const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR:80,volB:60,volD:45,loop:[],locks:[],chordGen:'jazzy',style:'jazzy-beats'};
 // Exportierte Namen werden nie neu zugewiesen, nur ihr Inhalt ändert sich. So sehen alle Module denselben Stand.
 // chords sind die Akkorde der aktuellen Folge im Format blueseven.chords, recent die zuletzt erzeugten Folgen.
@@ -52,9 +55,12 @@ function load(d){
     if(!registry.has('styles',S.style))S.style=DEF.style;
     if(!S.mix||typeof S.mix!=='object'||Array.isArray(S.mix))delete S.mix;
     if(!S.sp||typeof S.sp!=='object'||Array.isArray(S.sp))delete S.sp;
+    if(!Array.isArray(S.ov))delete S.ov;
     if(!Array.isArray(S.loop)||S.loop.length!==S.n||!fromIds(S.loop,S.key,S.mode))S.loop=[];
   }
   S.locks=Array.from({length:S.n},(_,i)=>!!(S.locks&&S.locks[i]&&S.loop[i]));
+  // Zufallsstartwert des Songs: Stile, die würfeln, liefern damit bei jeder Änderung denselben Song.
+  if(typeof S.seed!=='number'||!Number.isFinite(S.seed))S.seed=randomSeed();
 }
 const keyLabel=(key,mode)=>noteName(key,key,mode)+(mode==='dur'?'-Dur':'-Moll');
 const keyName=()=>keyLabel(S.key,S.mode);

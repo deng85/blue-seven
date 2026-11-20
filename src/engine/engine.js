@@ -15,10 +15,11 @@
    nächsten 0,6 s beginnt. Tempo, Swing und ein neuer Song wirken deshalb ab dem nächsten Takt. */
 import {normalize,normalizeValue} from '../core/params.js';
 import {checkSong,checkAddress} from '../core/format.js';
-import {notesBetween,structureKey} from './timeline.js';
+import {notesBetween,structureKey,automationAt} from './timeline.js';
 import {buildMixer} from './mixer.js';
 
 const LOOKAHEAD=.6,TICK_MS=50,START_DELAY=.15,FADE=.015,KILL_MS=90,TAIL_MS=4000;
+const AUTO_STEP=.25;   // Automation wird in Sechzehnteln abgetastet, die Parameter glätten dazwischen selbst
 
 function createEngine(registry,options){
   const env=Object.assign({
@@ -32,11 +33,14 @@ function createEngine(registry,options){
 
   let ac=null,gate=null,graph=null,song=null;
   let playing=false,timer=0,fadeTimer=0,pos=0,nextTime=0,anchors=[],endTime=-1;
+  // Adressen, die der Nutzer selbst gesetzt hat: Sie haben Vorrang vor der Automation (F-E6).
+  let overrides=new Set(),autoLast=new Map(),tempoSent=0;
 
   /* ---------- Signalweg ---------- */
   function buildGraph(s){
     // Reihenfolge wie bisher: erst die Effekte (Hall), dann die Instrumente (Rauschen der Drums).
-    const mixer=buildMixer(ac,s.mixer,registry,warn);
+    const mixer=buildMixer(ac,s.mixer,registry,warn,s.tempo.bpm);
+    autoLast=new Map();tempoSent=s.tempo.bpm;
     mixer.output.connect(gate);
     const tracks=new Map();
     for(const tr of s.tracks){
@@ -89,6 +93,24 @@ function createEngine(registry,options){
       // Wie im bisherigen Ablauf: Achtel zwischen den Schlägen kommen um sw später.
       const t=t0+(n.beat-from)*spb+(Math.round(n.beat*2)%2?sw:0)+n.o;
       g.inst.play({p:n.p,v:n.v},t,n.d*spb);
+      for(const fx of graph.mixer.triggersFor(n.track))fx.trigger(t);
+    }
+    if(graph){
+      if(tp.bpm!==tempoSent){graph.mixer.setTempo(tp.bpm,t0);tempoSent=tp.bpm;}
+      // Automation: für jede Sechzehntel dieses Takts den Wert setzen, wenn er sich geändert hat.
+      for(const lane of s.automation||[]){
+        if(overrides.has(lane.target))continue;
+        const parts=lane.target.split('/');
+        if(parts[0]==='tempo')continue;
+        for(let b=from;b<to-1e-9;b+=AUTO_STEP){
+          const v=automationAt(lane.points,b);
+          if(autoLast.get(lane.target)===v)continue;
+          autoLast.set(lane.target,v);
+          const at=t0+(b-from)*spb;
+          if(parts[0]==='track'){const g=graph.tracks.get(parts[1]);if(g)setInstrumentParam(g,parts[3],v,at);}
+          else graph.mixer.set(parts,v,at);
+        }
+      }
     }
     anchors.push({time:t0,beat:from,bpm:tp.bpm,song:s});
     nextTime=t0+(to-from)*60/tp.bpm;
@@ -137,9 +159,12 @@ function createEngine(registry,options){
     ready:()=>!!ac,
     isPlaying:()=>playing,
     // Übernimmt einen Song. Im Lauf gilt er ab dem nächsten Takt, die Position läuft weiter.
-    load(next){
+    // opts.overrides: Adressen, die der Nutzer gesetzt hat und die Vorrang vor der Automation behalten.
+    load(next,opts){
       const errors=checkSong(next);
       if(errors.length)throw new Error('Der Song ist ungültig.\n  '+errors.join('\n  '));
+      if(opts&&opts.overrides)overrides=new Set(opts.overrides);
+      autoLast=new Map();
       const prev=song;
       song=JSON.parse(JSON.stringify(next));
       attach(song,prev);
@@ -149,7 +174,7 @@ function createEngine(registry,options){
     play(opts){
       if(!ac||!song||playing)return false;
       cancelFade();
-      playing=true;anchors=[];endTime=-1;
+      playing=true;anchors=[];endTime=-1;autoLast=new Map();
       pos=Math.min(Math.max(0,(opts&&opts.from)||0),song.length);
       nextTime=ac.currentTime+START_DELAY;
       tick();timer=env.setInterval(tick,TICK_MS);
@@ -169,6 +194,7 @@ function createEngine(registry,options){
       if(bad){warn(bad);return false;}
       const parts=address.split('/'),t=ac?ac.currentTime:0;
       let ok=true;
+      if(parts[0]!=='tempo')overrides.add(address);
       if(parts[0]==='tempo'){
         if(typeof value!=='number'||!Number.isFinite(value))return false;
         song.tempo[parts[1]]=parts[1]==='bpm'?Math.min(400,Math.max(20,value)):Math.min(100,Math.max(0,value));
@@ -206,6 +232,14 @@ function createEngine(registry,options){
       if(!a||a.time>now)return null;
       return {beat:a.beat+(now-a.time)*a.bpm/60,song:a.song};
     },
+    // Springt zu einer Position in Vierteln (auf den Taktanfang davor). Im Lauf geht es dort nach kurzer Stille weiter.
+    seek(beat){
+      if(!playing)return false;
+      api.stop();
+      const bar=song.tempo.beatsPerBar;
+      return api.play({from:Math.floor(beat/bar)*bar});
+    },
+    overrides:()=>[...overrides],
     on(ev,fn){if(listeners[ev])listeners[ev].push(fn);}
   };
   return api;
