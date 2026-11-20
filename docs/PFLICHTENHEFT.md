@@ -37,8 +37,8 @@ Der heutige Stand, soweit er für den Umbau zählt:
 | `src/harmony.js` | Akkordpool, `generate`, `voiceLoop`. Rein, ohne DOM und Audio | Liefert Stufen-IDs und ein eigenes Voicing-Format, kein allgemeines Akkordformat |
 | `src/sequencer.js` | `scheduleBar` enthält die Begleitmuster (liegend, Comping, gebrochen), Basslauf und Drum-Pattern und ruft die Klangfunktionen direkt auf | Musikalischer Inhalt und Abspielen sind eins. Es gibt kein Song-Objekt |
 | `src/audio.js` | `rhodes`, `bass`, `kick`, `hat`, `rim` als freie Funktionen. Signalweg fest: Busse, Tiefpass, Tremolo, Hall, `gate`, Kompressor | Instrumente und Effekte sind nicht austauschbar, der Signalweg ist nicht beschreibbar |
-| `src/state.js` | Ein Zustandsobjekt `S`, gespeichert unter `blueseven.v1` | Mixerwerte sind drei feste Felder (`volR`, `volB`, `volD`) |
-| `src/ui.js`, `src/main.js` | Kacheln, Klaviatur, Regler, Event-Handler | Greifen direkt auf `S`, `voiced` und die Klangfunktionen zu |
+| `src/app/state.js` | Ein Zustandsobjekt `S`, gespeichert unter `blueseven.v1` | Mixerwerte sind drei feste Felder (`volR`, `volB`, `volD`) |
+| `src/app/ui.js`, `src/app/main.js` | Kacheln, Klaviatur, Regler, Event-Handler | Greifen direkt auf `S`, `voiced` und die Klangfunktionen zu |
 
 Technische Festlegungen aus PR 1, die bestehen bleiben: `build.mjs` ohne Abhängigkeiten setzt aus `src/` eine einzelne `index.html` zusammen, die gebaute Datei ist eingecheckt, GitHub Pages liefert `main` aus dem Wurzelordner aus.
 
@@ -155,6 +155,8 @@ src/
 test/
 docs/
 ```
+
+Stand nach Phase 0: `core/` und `app/` gibt es. `harmony.js`, `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/`, bis sie in Phase 1 zu `chords/jazzy.js` und in Phase 3 zu Instrumenten, Effekten und Engine werden.
 
 `src/index.html` enthält nur noch Markup, die Zeile für `styles.css` und eine Zeile für das Skript, an deren Stelle der Build das zusammengeführte Skript setzt.
 
@@ -550,7 +552,7 @@ Wichtig für die Klangtreue: Heute greift der Hall-Send des Rhodes hinter Tiefpa
 - **F-P4** `volR`, `volB` und `volD` werden weiter gepflegt. Sie entsprechen den Kanälen Rhodes, Bass und Drums des aktuellen Jazzy-Beats-Songs.
 - **F-P5** Gemerkte Folgen bleiben Akkordfolgen im heutigen Format (`key`, `mode`, `loop`). Sie lassen sich mit jedem Stil laden.
 - **F-P6** Vom Nutzer gespeicherte Songs liegen unter einem eigenen, neuen Schlüssel, damit `blueseven.v1` klein bleibt und die Speichergrenze des Browsers nicht die Einstellungen gefährdet.
-- **F-P7** Die Anbindung an `window.claude.hot` in `src/main.js` bleibt funktionsfähig.
+- **F-P7** Die Anbindung an `window.claude.hot` in `src/app/main.js` bleibt funktionsfähig.
 
 ### 12.1 Mixer-Einstellungen gehören zum Song
 
