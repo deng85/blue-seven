@@ -1,12 +1,11 @@
 /* ================= Bedienung ================= */
 import {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist} from './state.js';
 import {buildKeys,render,renderFavs} from './ui.js';
-import {setVols} from '../audio.js';
-import {start,stop,audition} from '../sequencer.js';
+import {start,stop,audition,refresh,setVolumes} from './player.js';
 
 function newLoop(){
   const p=chordGen().generate(genParams(),{key:S.key,mode:S.mode,rnd:Math.random,previous:fromIds(S.loop,S.key,S.mode),locked:S.locks,avoid:recent});
-  S.loop=idsOf(p);setProg(p);
+  S.loop=idsOf(p);setProg(p);refresh();
   recent.push(p);if(recent.length>12)recent.shift();
   render();save();
 }
@@ -21,7 +20,7 @@ function bind(){
   $('gen').addEventListener('click',()=>{pushHist();newLoop();});
   $('back').addEventListener('click',()=>{
     const h=hist.pop();if(!h)return;
-    S.key=h.key;S.mode=h.mode;S.n=h.n;S.loop=h.loop;S.locks=Array(S.n).fill(false);revoice();render();save();
+    S.key=h.key;S.mode=h.mode;S.n=h.n;S.loop=h.loop;S.locks=Array(S.n).fill(false);revoice();refresh();render();save();
   });
   $('fav').addEventListener('click',()=>{
     const f={key:S.key,mode:S.mode,loop:S.loop.slice()},same=x=>x.key===f.key&&x.mode===f.mode&&x.loop.join()===f.loop.join();
@@ -31,21 +30,26 @@ function bind(){
   $('favs').addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i;
     if(b.classList.contains('del'))favs.splice(i,1);
-    else{const f=favs[i];pushHist();S.key=f.key;S.mode=f.mode;S.n=f.loop.length;S.loop=f.loop.slice();S.locks=Array(S.n).fill(false);revoice();}
+    else{const f=favs[i];pushHist();S.key=f.key;S.mode=f.mode;S.n=f.loop.length;S.loop=f.loop.slice();S.locks=Array(S.n).fill(false);revoice();refresh();}
     render();save();
   });
   $('segN').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||+b.dataset.v===S.n)return;
     pushHist();S.n=+b.dataset.v;S.loop=S.loop.slice(0,S.n);S.locks=Array.from({length:S.n},(_,i)=>!!S.locks[i]&&!!S.loop[i]);newLoop();});
   $('segMode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.v===S.mode)return;
     pushHist();S.mode=b.dataset.v;S.loop=[];S.locks=Array(S.n).fill(false);newLoop();});
-  $('segFeel').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.feel=b.dataset.v;render();save();});
-  $('segNine').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.nine=+b.dataset.v;revoice();render();save();});
-  $('keys12').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.key=+b.dataset.v;revoice();render();save();});
-  for(const id of ['spice','bpm','swing','volR','volB','volD'])$(id).addEventListener('input',e=>{S[id]=+e.target.value;setVols();render();save();});
+  $('segFeel').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.feel=b.dataset.v;refresh();render();save();});
+  $('segNine').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.nine=+b.dataset.v;revoice();refresh();render();save();});
+  $('keys12').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.key=+b.dataset.v;revoice();refresh();render();save();});
+  // Tempo und Swing gelten ab dem nächsten Takt, die Lautstärken sofort. Würze wirkt erst bei der nächsten Folge.
+  for(const id of ['spice','bpm','swing','volR','volB','volD'])$(id).addEventListener('input',e=>{
+    S[id]=+e.target.value;
+    if(id==='bpm'||id==='swing')refresh();else if(id!=='spice')setVolumes();
+    render();save();
+  });
 }
 function boot(d){
   load(d);buildKeys();bind();
-  if(S.loop.length){revoice();render();}else newLoop();
+  if(S.loop.length){revoice();refresh();render();}else newLoop();
 }
 if(window.claude&&window.claude.hot){
   window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({S,favs}));

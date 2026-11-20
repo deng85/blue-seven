@@ -59,20 +59,15 @@ const ALLOWED = {
   engine: ['core'],
   app: ['core', 'chords', 'styles', 'instruments', 'effects', 'engine'],
 };
-// Übergang: Diese Dateien liegen noch im Wurzelordner von src/ und ziehen in den Phasen 1 und 3 um.
-// Bis dahin gelten für sie und für Importe auf sie keine Regeln. Die Liste darf nur kürzer werden.
-const LEGACY = ['audio.js', 'sequencer.js'];
-
 test('Module importieren nur aus den Ordnern, die ihnen erlaubt sind', () => {
   const files = modules();
-  assert.deepEqual(files.filter(f => !f.includes('/')).sort(), [...LEGACY].sort(), 'im Wurzelordner von src/ liegen nur noch die Übergangsdateien');
-  for (const f of files.filter(f => f.includes('/'))) {
+  assert.deepEqual(files.filter(f => !f.includes('/')), [], 'jedes Modul liegt in einem der Ordner aus Abschnitt 6.1');
+  for (const f of files) {
     const folder = f.split('/')[0];
     assert.ok(ALLOWED[folder], `${f}: für den Ordner ${folder}/ ist keine Regel hinterlegt`);
     const code = readFileSync(new URL(f, SRC), 'utf8');
     for (const [, from] of code.matchAll(/^[ \t]*import\s*\{[^}]*\}\s*from\s*['"]([^'"]+)['"]/gm)) {
       const target = relative(fileURLToPath(SRC), resolve(dirname(fileURLToPath(new URL(f, SRC))), from)).split(sep).join('/');
-      if (LEGACY.includes(target)) continue;
       const to = target.split('/')[0];
       assert.ok(to === folder || to === 'core' || ALLOWED[folder].includes(to), `${f} darf nicht aus ${to}/ importieren (${from})`);
     }
@@ -83,6 +78,15 @@ test('Kern und Generatoren benutzen weder DOM noch Web Audio', () => {
   for (const f of modules().filter(f => /^(core|chords|styles)\//.test(f))) {
     const code = readFileSync(new URL(f, SRC), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
     const hit = code.match(/\b(document|window|navigator|localStorage|AudioContext|requestAnimationFrame)\b/);
+    assert.ok(!hit, `${f} benutzt ${hit && hit[0]}`);
+  }
+});
+
+test('Engine, Instrumente und Effekte kennen die Oberfläche nicht', () => {
+  // Sie bekommen den AudioContext von außen (die Engine legt ihn über globalThis an) und fassen weder DOM noch Speicher an.
+  for (const f of modules().filter(f => /^(engine|instruments|effects)\//.test(f))) {
+    const code = readFileSync(new URL(f, SRC), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    const hit = code.match(/\b(document|window|navigator|localStorage|requestAnimationFrame)\b/);
     assert.ok(!hit, `${f} benutzt ${hit && hit[0]}`);
   }
 });

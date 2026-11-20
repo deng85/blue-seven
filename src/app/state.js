@@ -8,6 +8,7 @@ const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR
 // Exportierte Namen werden nie neu zugewiesen, nur ihr Inhalt ändert sich. So sehen alle Module denselben Stand.
 // chords sind die Akkorde der aktuellen Folge im Format blueseven.chords, recent die zuletzt erzeugten Folgen.
 const S=Object.assign({},DEF),favs=[],hist=[],recent=[],chords=[];
+let current=null;   // die ganze aktuelle Folge, nur über progression() lesbar
 const run={playing:false,active:-1};   // läuft gerade etwas, und welcher Akkord ist dran
 const LS='blueseven.v1';
 
@@ -41,10 +42,12 @@ function load(d){
 const keyLabel=(key,mode)=>noteName(key,key,mode)+(mode==='dur'?'-Dur':'-Moll');
 const keyName=()=>keyLabel(S.key,S.mode);
 // Übernimmt eine Akkordfolge als aktuelle Folge.
-function setProg(p){chords.length=0;if(p)chords.push(...p.chords);}
+function setProg(p){current=p||null;chords.length=0;if(p)chords.push(...p.chords);}
+// Die aktuelle Folge im Format blueseven.chords, oder null.
+const progression=()=>current;
 // Die aktuelle Folge neu ausgeben, zum Beispiel nach Tonartwechsel oder None an/aus.
 function revoice(){setProg(fromIds(S.loop,S.key,S.mode));}
 function pushHist(){if(S.loop.length){hist.push({key:S.key,mode:S.mode,n:S.n,loop:S.loop.slice()});if(hist.length>30)hist.shift();}}
 
-export {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,revoice,pushHist};
+export {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,progression,revoice,pushHist};
 

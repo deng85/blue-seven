@@ -1,7 +1,7 @@
 // Wörtliche Kopie von scheduleBar aus src/sequencer.js, Stand vor Phase 2 (main 68d102a).
-// Sie ist die Referenz dafür, was Jazzy Beats erzeugen muss, auch nachdem sequencer.js in Phase 3 entfällt.
+// Sie ist die Referenz dafür, was Jazzy Beats erzeugen und die Engine planen muss. sequencer.js gibt es seit
+// Phase 3 nicht mehr; bis dahin hat ein Test geprüft, dass die Kopie Zeichen für Zeichen übereinstimmt.
 // Die Abhängigkeiten kommen über env herein, damit die Funktion in Node läuft und jeden Aufruf aufzeichnen kann.
-// Ein Test prüft, dass die Kopie Zeichen für Zeichen mit sequencer.js übereinstimmt, solange es die Datei gibt.
 
 export function createLegacyBar(env) {
   const { S, chords, bassNote, rhodes, bass, hat, kick, rim, queue } = env;

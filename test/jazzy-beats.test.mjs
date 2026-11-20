@@ -1,7 +1,6 @@
 // Tests für den Stil Jazzy Beats. Laufen mit: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
 import { checkSong, checkChords } from '../src/core/format.js';
 import { beatToSeconds } from '../src/core/time.js';
 import { faderToGain } from '../src/core/gain.js';
@@ -41,17 +40,6 @@ function songEvents(song, loops) {
   return out;
 }
 const norm = evs => evs.map(e => e.map(x => typeof x === 'number' ? x.toFixed(6) : x).join(' ')).sort();
-
-test('Die Referenz in test/fixtures/legacy-bar.js stimmt mit scheduleBar in src/sequencer.js überein', t => {
-  const file = new URL('../src/sequencer.js', import.meta.url);
-  if (!existsSync(file)) { t.skip('sequencer.js gibt es nicht mehr, die Referenz steht für sich'); return; }
-  const body = text => {
-    const m = text.match(/function scheduleBar\(t0,i\)\{\n([\s\S]*?)\n\s*\}\n/);
-    assert.ok(m, 'scheduleBar nicht gefunden');
-    return m[1].split('\n').map(l => l.trim()).join('\n');
-  };
-  assert.equal(body(readFileSync(new URL('./fixtures/legacy-bar.js', import.meta.url), 'utf8')), body(readFileSync(file, 'utf8')));
-});
 
 test('Jazzy Beats erzeugt dieselben Noten wie der bisherige Takt-Ablauf, für alle Spielweisen', () => {
   const progs = [];
