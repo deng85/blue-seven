@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blue Seven Loop-Maker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/*@include styles.css*/
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Blue <span>Seven</span></h1>
+    <div id="status" aria-live="polite"></div>
+  </header>
+
+  <section aria-label="Akkordfolge">
+    <div class="tiles" id="tiles"></div>
+    <svg id="keys" role="img" aria-label="Klaviatur mit den Tönen des aktuellen Akkords"></svg>
+    <p class="hint" id="hint">Akkord antippen zum Anhören. Mit „Halten“ bleibt er bei der nächsten Folge stehen.</p>
+  </section>
+
+  <section>
+    <h2>Folge</h2>
+    <div class="two">
+      <div class="row"><div class="lab"><span>Akkorde</span></div>
+        <div class="seg" id="segN"><button data-v="3">3</button><button data-v="4">4</button></div></div>
+      <div class="row"><div class="lab"><span>Tongeschlecht</span></div>
+        <div class="seg" id="segMode"><button data-v="dur">Dur</button><button data-v="moll">Moll</button></div></div>
+    </div>
+    <div class="row"><div class="lab"><span>Tonart</span></div><div class="keys12" id="keys12"></div></div>
+    <div class="row">
+      <div class="lab"><label for="spice">Würze</label><output id="spiceOut"></output></div>
+      <input type="range" id="spice" min="0" max="100" step="5">
+      <p class="hint">Links nur Akkorde aus der Tonleiter, rechts mehr geliehene Farben wie ♭VImaj7. Wirkt ab der nächsten neuen Folge.</p>
+    </div>
+    <div class="row"><div class="lab"><span>Farbton</span></div>
+      <div class="seg" id="segNine"><button data-v="1">Mit None (m9, maj9)</button><button data-v="0">Reine Septakkorde</button></div></div>
+  </section>
+
+  <section>
+    <h2>Groove</h2>
+    <div class="row"><div class="lab"><span>Spielweise</span></div>
+      <div class="seg" id="segFeel"><button data-v="pad">Liegend</button><button data-v="comp">Comping</button><button data-v="arp">Gebrochen</button></div></div>
+    <div class="two">
+      <div class="row"><div class="lab"><label for="bpm">Tempo</label><output id="bpmOut"></output></div><input type="range" id="bpm" min="56" max="132" step="1"></div>
+      <div class="row"><div class="lab"><label for="swing">Swing</label><output id="swingOut"></output></div><input type="range" id="swing" min="0" max="100" step="5"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mixer</h2>
+    <div class="row"><div class="lab"><label for="volR">Rhodes</label><output id="volROut"></output></div><input type="range" id="volR" min="0" max="100" step="1"></div>
+    <div class="two">
+      <div class="row"><div class="lab"><label for="volB">Bass</label><output id="volBOut"></output></div><input type="range" id="volB" min="0" max="100" step="1"></div>
+      <div class="row"><div class="lab"><label for="volD">Drums</label><output id="volDOut"></output></div><input type="range" id="volD" min="0" max="100" step="1"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Gemerkte Folgen</h2>
+    <div class="favs" id="favs"></div>
+    <p class="hint">Kein Ton auf dem iPhone? Lautstärke hochdrehen und den Stummschalter prüfen.</p>
+  </section>
+</div>
+
+<div class="bar"><div>
+  <button id="back" aria-label="Vorherige Folge zurückholen"><svg viewBox="0 0 24 24"><path d="M12 5V1L6 6.5 12 12V8a6 6 0 1 1-6 6H4a8 8 0 1 0 8-9z"/></svg></button>
+  <button id="play"><svg viewBox="0 0 24 24" id="playIco"><path d="M7 4v16l13-8z"/></svg><span id="playTxt">Play</span></button>
+  <button id="gen"><svg viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 3.5A1.5 1.5 0 1 0 8 9.5 1.5 1.5 0 0 0 8 6.5zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm-4 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm-4 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z" fill-rule="evenodd"/></svg>Würfeln</button>
+  <button id="fav" aria-label="Diese Folge merken"><svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.300 2.700 4.500 6.300 4.500c2 0 3.400 1 4.200 2.300h3c.8-1.300 2.200-2.300 4.200-2.300 3.600 0 5.400 3.800 3.900 7.200C19.500 16.400 12 21 12 21z"/></svg></button>
+</div></div>
+
+<script>
+/*@include harmony.js*/
+/*@include state.js*/
+/*@include ui.js*/
+/*@include audio.js*/
+/*@include sequencer.js*/
+/*@include main.js*/
+</script>
+</body>
+</html>
