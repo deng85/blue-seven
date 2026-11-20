@@ -1079,17 +1079,23 @@ const __mod11=(function(){
 const {createVoices}=__mod8;
 /* ================= Instrument „Drums“ ================= */
 /* Kick, Rim und Hi-Hat aus Sinus und gefiltertem Rauschen. Unverändert aus dem früheren audio.js übernommen.
-   Welcher Klang spielt, bestimmt die Tonhöhe nach General MIDI: 36 Kick, 37 Rim, 42 Hi-Hat. */
+   Welcher Klang spielt, bestimmt die Tonhöhe nach General MIDI: 36 Kick, 37 Rim, 42 Hi-Hat.
+   Seit Phase 5 dazu: 39 Clap, 46 offene Hi-Hat, 70 Shaker und der Parameter kit. Mit kit „house“ ist die Kick
+   tiefer, länger und lauter. Mit „jazz“ (Standard) klingt alles wie bisher. */
 
 
-const KICK=36,RIM=37,HAT=42;
+const KICK=36,RIM=37,CLAP=39,HAT=42,OHAT=46,SHAKER=70;
 
 const drums={
   type:'drums',
   name:'Drums',
-  params:[{id:'level',name:'Pegel',type:'number',min:0,max:2,step:.01,default:1}],
+  params:[
+    {id:'level',name:'Pegel',type:'number',min:0,max:2,step:.01,default:1},
+    {id:'kit',name:'Art',type:'enum',default:'jazz',options:[{value:'jazz',name:'Jazz'},{value:'house',name:'House'}]}
+  ],
   create(ac,params){
     const out=ac.createGain();out.gain.value=params.level;
+    let kit=params.kit;
     const voices=createVoices(16);
     const noiseBuf=ac.createBuffer(1,ac.sampleRate*.5,ac.sampleRate);
     const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
@@ -1101,6 +1107,21 @@ const drums={
       return g;
     }
     function osc(type,f,t,end,src){const o=ac.createOscillator();o.type=type;o.frequency.value=f;o.start(t);o.stop(end);src.push(o);return o;}
+    function houseKick(t,vel){
+      const src=[],o=osc('sine',170,t,t+.42,src),g=ac.createGain();
+      o.frequency.setValueAtTime(170,t);o.frequency.exponentialRampToValueAtTime(46,t+.09);
+      g.gain.setValueAtTime(1.1*vel,t);g.gain.exponentialRampToValueAtTime(.001,t+.4);o.connect(g);g.connect(out);
+      noise(t,.012,'lowpass',3000,.5,.3*vel,src);
+      voices.add(ac.currentTime,t,t+.42,g.gain,src);
+    }
+    function clap(t,vel){
+      const src=[];let g;
+      for(const d of [0,.011,.022])noise(t+d,.012,'bandpass',1300,.9,.4*vel,src);
+      g=noise(t+.032,.16,'bandpass',1300,.9,.42*vel,src);
+      voices.add(ac.currentTime,t,t+.22,g.gain,src);
+    }
+    function openHat(t,vel){const src=[],g=noise(t,.2,'highpass',7000,.8,.15*vel,src);voices.add(ac.currentTime,t,t+.22,g.gain,src);}
+    function shaker(t,vel){const src=[],g=noise(t,.05,'bandpass',5200,1,.14*vel,src);voices.add(ac.currentTime,t,t+.07,g.gain,src);}
     function kick(t,vel){
       const src=[],o=osc('sine',130,t,t+.32,src),g=ac.createGain();
       o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(48,t+.11);
@@ -1117,11 +1138,14 @@ const drums={
     return {
       output:out,
       play(note,t){
-        if(note.p===KICK)kick(t,note.v);
+        if(note.p===KICK)(kit==='house'?houseKick:kick)(t,note.v);
+        else if(note.p===CLAP)clap(t,note.v);
+        else if(note.p===OHAT)openHat(t,note.v);
+        else if(note.p===SHAKER)shaker(t,note.v);
         else if(note.p===HAT)hat(t,note.v);
         else if(note.p===RIM)rim(t,note.v);
       },
-      setParam(id,v,time){if(id==='level')out.gain.setTargetAtTime(v,time,.02);},
+      setParam(id,v,time){if(id==='level')out.gain.setTargetAtTime(v,time,.02);else if(id==='kit')kit=v;},
       stopAll(){voices.stopAll();},
       dispose(){voices.stopAll();out.disconnect();}
     };
@@ -1665,7 +1689,21 @@ function structureKey(song){
     master:fx(m.master.inserts)
   });
 }
-return {notesBetween,structureKey};
+
+// Wert einer Automation an der Stelle beat. points sind nach Zeit sortiert. Die Kurve eines Stützpunkts sagt,
+// wie der Wert vom vorherigen zu ihm hinläuft: step (springt erst am Punkt), lin (Standard) oder exp.
+// Vor dem ersten Punkt gilt dessen Wert, nach dem letzten der letzte.
+function automationAt(points,beat){
+  let i=-1;
+  while(i+1<points.length&&points[i+1].t<=beat)i++;
+  if(i<0)return points[0].v;
+  const a=points[i],b=points[i+1];
+  if(!b||b.curve==='step'||b.t<=a.t)return a.v;
+  const x=(beat-a.t)/(b.t-a.t);
+  if(b.curve==='exp'&&a.v>0&&b.v>0)return a.v*Math.pow(b.v/a.v,x);
+  return a.v+(b.v-a.v)*x;
+}
+return {notesBetween,structureKey,automationAt};
 })();
 
 /* ---------- engine/mixer.js ---------- */
@@ -1687,11 +1725,17 @@ const SMOOTH=.02;   // Glättung für Pegel und Panorama in Sekunden, wie bisher
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,+v||0));
 
 // Ein Effekt im Signalweg, mit Umgehung (bypass) ohne Knacken. Unbekannte Effekte werden durchgereicht.
-function createInsert(ac,spec,registry,warn,where){
+function createInsert(ac,spec,registry,warn,where,shared){
   const input=ac.createGain(),output=ac.createGain(),wet=ac.createGain(),dry=ac.createGain();
   const mod=registry.get('effects',spec.type);
   let fx=null,params={};
-  if(mod){params=normalize(mod.params||[],spec.params);fx=mod.create(ac,params);input.connect(fx.input);fx.output.connect(wet);}
+  if(mod){
+    params=normalize(mod.params||[],spec.params);fx=mod.create(ac,params);input.connect(fx.input);fx.output.connect(wet);
+    // Effekte, die das Tempo brauchen (Echo in Notenwerten) oder auf die Noten einer Spur reagieren (Ducker).
+    if(fx.setTempo){fx.setTempo(shared.bpm);shared.tempo.push(fx);}
+    const src=spec.params&&spec.params.source;
+    if(fx.trigger&&typeof src==='string'){if(!shared.triggers.has(src))shared.triggers.set(src,[]);shared.triggers.get(src).push(fx);}
+  }
   else warn(`${where}: Den Effekt „${spec.type}“ gibt es nicht. Er wird übersprungen.`);
   input.connect(dry);wet.connect(output);dry.connect(output);
   const route=(bypass,t)=>{
@@ -1711,23 +1755,24 @@ function createInsert(ac,spec,registry,warn,where){
     dispose(){if(fx&&fx.dispose)fx.dispose();input.disconnect();output.disconnect();}
   };
 }
-function createChain(ac,list,registry,warn,where,input){
+function createChain(ac,list,registry,warn,where,input,shared){
   let node=input;const map=new Map();
-  for(const spec of list||[]){const x=createInsert(ac,spec,registry,warn,`${where}, Effekt „${spec.id}“`);node.connect(x.input);node=x.output;map.set(spec.id,x);}
+  for(const spec of list||[]){const x=createInsert(ac,spec,registry,warn,`${where}, Effekt „${spec.id}“`,shared);node.connect(x.input);node=x.output;map.set(spec.id,x);}
   return {output:node,inserts:map};
 }
 
-function buildMixer(ac,mx,registry,warn){
+function buildMixer(ac,mx,registry,warn,bpm){
   const nodes=[],track=n=>(nodes.push(n),n);
+  const shared={bpm:bpm||120,tempo:[],triggers:new Map()};
   // Summe
   const masterIn=track(ac.createGain());
-  const mc=createChain(ac,mx.master.inserts,registry,warn,'Summe',masterIn);
+  const mc=createChain(ac,mx.master.inserts,registry,warn,'Summe',masterIn,shared);
   const masterOut=track(ac.createGain());masterOut.gain.value=mx.master.gain;mc.output.connect(masterOut);
   const master={inserts:mc.inserts,fader:masterOut};
   // Effektspuren
   const returns=new Map();
   for(const r of mx.returns){
-    const input=track(ac.createGain()),c=createChain(ac,r.inserts,registry,warn,`Effektspur „${r.name}“`,input);
+    const input=track(ac.createGain()),c=createChain(ac,r.inserts,registry,warn,`Effektspur „${r.name}“`,input,shared);
     const fader=track(ac.createGain()),mute=track(ac.createGain());
     fader.gain.value=r.gain;mute.gain.value=r.mute?0:1;
     c.output.connect(fader);fader.connect(mute);mute.connect(masterIn);
@@ -1736,7 +1781,7 @@ function buildMixer(ac,mx,registry,warn){
   // Kanäle
   const channels=new Map(),state=new Map();
   for(const ch of mx.channels){
-    const input=track(ac.createGain()),c=createChain(ac,ch.inserts,registry,warn,`Kanal „${ch.name}“`,input);
+    const input=track(ac.createGain()),c=createChain(ac,ch.inserts,registry,warn,`Kanal „${ch.name}“`,input,shared);
     const fader=track(ac.createGain());
     fader.channelCount=2;fader.channelCountMode='explicit';fader.channelInterpretation='speakers';
     fader.gain.value=ch.gain;c.output.connect(fader);
@@ -1810,6 +1855,10 @@ function buildMixer(ac,mx,registry,warn){
     output:masterOut,
     channelInput:id=>{const c=channels.get(id);return c&&c.input;},
     set,apply,
+    // Gibt das Tempo an alle Effekte weiter, die es brauchen.
+    setTempo(v,t){for(const fx of shared.tempo)fx.setTempo(v,t);},
+    // Effekte, die bei jeder Note der Spur trackId ausgelöst werden wollen.
+    triggersFor:trackId=>shared.triggers.get(trackId)||[],
     dispose(){
       for(const owner of [master,...returns.values(),...channels.values()])for(const x of owner.inserts.values())x.dispose();
       for(const n of nodes){try{n.disconnect();}catch(e){}}
@@ -1823,7 +1872,7 @@ return {buildMixer};
 const __mod23=(function(){
 const {normalize,normalizeValue}=__mod1;
 const {checkSong,checkAddress}=__mod3;
-const {notesBetween,structureKey}=__mod21;
+const {notesBetween,structureKey,automationAt}=__mod21;
 const {buildMixer}=__mod22;
 /* ================= Engine ================= */
 /* Spielt jeden gültigen Song ab. Kennt weder die Oberfläche noch den App-Zustand, Instrumente und Effekte
@@ -1846,6 +1895,7 @@ const {buildMixer}=__mod22;
 
 
 const LOOKAHEAD=.6,TICK_MS=50,START_DELAY=.15,FADE=.015,KILL_MS=90,TAIL_MS=4000;
+const AUTO_STEP=.25;   // Automation wird in Sechzehnteln abgetastet, die Parameter glätten dazwischen selbst
 
 function createEngine(registry,options){
   const env=Object.assign({
@@ -1859,11 +1909,14 @@ function createEngine(registry,options){
 
   let ac=null,gate=null,graph=null,song=null;
   let playing=false,timer=0,fadeTimer=0,pos=0,nextTime=0,anchors=[],endTime=-1;
+  // Adressen, die der Nutzer selbst gesetzt hat: Sie haben Vorrang vor der Automation (F-E6).
+  let overrides=new Set(),autoLast=new Map(),tempoSent=0;
 
   /* ---------- Signalweg ---------- */
   function buildGraph(s){
     // Reihenfolge wie bisher: erst die Effekte (Hall), dann die Instrumente (Rauschen der Drums).
-    const mixer=buildMixer(ac,s.mixer,registry,warn);
+    const mixer=buildMixer(ac,s.mixer,registry,warn,s.tempo.bpm);
+    autoLast=new Map();tempoSent=s.tempo.bpm;
     mixer.output.connect(gate);
     const tracks=new Map();
     for(const tr of s.tracks){
@@ -1916,6 +1969,24 @@ function createEngine(registry,options){
       // Wie im bisherigen Ablauf: Achtel zwischen den Schlägen kommen um sw später.
       const t=t0+(n.beat-from)*spb+(Math.round(n.beat*2)%2?sw:0)+n.o;
       g.inst.play({p:n.p,v:n.v},t,n.d*spb);
+      for(const fx of graph.mixer.triggersFor(n.track))fx.trigger(t);
+    }
+    if(graph){
+      if(tp.bpm!==tempoSent){graph.mixer.setTempo(tp.bpm,t0);tempoSent=tp.bpm;}
+      // Automation: für jede Sechzehntel dieses Takts den Wert setzen, wenn er sich geändert hat.
+      for(const lane of s.automation||[]){
+        if(overrides.has(lane.target))continue;
+        const parts=lane.target.split('/');
+        if(parts[0]==='tempo')continue;
+        for(let b=from;b<to-1e-9;b+=AUTO_STEP){
+          const v=automationAt(lane.points,b);
+          if(autoLast.get(lane.target)===v)continue;
+          autoLast.set(lane.target,v);
+          const at=t0+(b-from)*spb;
+          if(parts[0]==='track'){const g=graph.tracks.get(parts[1]);if(g)setInstrumentParam(g,parts[3],v,at);}
+          else graph.mixer.set(parts,v,at);
+        }
+      }
     }
     anchors.push({time:t0,beat:from,bpm:tp.bpm,song:s});
     nextTime=t0+(to-from)*60/tp.bpm;
@@ -1964,9 +2035,12 @@ function createEngine(registry,options){
     ready:()=>!!ac,
     isPlaying:()=>playing,
     // Übernimmt einen Song. Im Lauf gilt er ab dem nächsten Takt, die Position läuft weiter.
-    load(next){
+    // opts.overrides: Adressen, die der Nutzer gesetzt hat und die Vorrang vor der Automation behalten.
+    load(next,opts){
       const errors=checkSong(next);
       if(errors.length)throw new Error('Der Song ist ungültig.\n  '+errors.join('\n  '));
+      if(opts&&opts.overrides)overrides=new Set(opts.overrides);
+      autoLast=new Map();
       const prev=song;
       song=JSON.parse(JSON.stringify(next));
       attach(song,prev);
@@ -1976,7 +2050,7 @@ function createEngine(registry,options){
     play(opts){
       if(!ac||!song||playing)return false;
       cancelFade();
-      playing=true;anchors=[];endTime=-1;
+      playing=true;anchors=[];endTime=-1;autoLast=new Map();
       pos=Math.min(Math.max(0,(opts&&opts.from)||0),song.length);
       nextTime=ac.currentTime+START_DELAY;
       tick();timer=env.setInterval(tick,TICK_MS);
@@ -1996,6 +2070,7 @@ function createEngine(registry,options){
       if(bad){warn(bad);return false;}
       const parts=address.split('/'),t=ac?ac.currentTime:0;
       let ok=true;
+      if(parts[0]!=='tempo')overrides.add(address);
       if(parts[0]==='tempo'){
         if(typeof value!=='number'||!Number.isFinite(value))return false;
         song.tempo[parts[1]]=parts[1]==='bpm'?Math.min(400,Math.max(20,value)):Math.min(100,Math.max(0,value));
@@ -2033,6 +2108,14 @@ function createEngine(registry,options){
       if(!a||a.time>now)return null;
       return {beat:a.beat+(now-a.time)*a.bpm/60,song:a.song};
     },
+    // Springt zu einer Position in Vierteln (auf den Taktanfang davor). Im Lauf geht es dort nach kurzer Stille weiter.
+    seek(beat){
+      if(!playing)return false;
+      api.stop();
+      const bar=song.tempo.beatsPerBar;
+      return api.play({from:Math.floor(beat/bar)*bar});
+    },
+    overrides:()=>[...overrides],
     on(ev,fn){if(listeners[ev])listeners[ev].push(fn);}
   };
   return api;

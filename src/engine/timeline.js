@@ -39,4 +39,18 @@ function structureKey(song){
   });
 }
 
-export {notesBetween,structureKey};
+// Wert einer Automation an der Stelle beat. points sind nach Zeit sortiert. Die Kurve eines Stützpunkts sagt,
+// wie der Wert vom vorherigen zu ihm hinläuft: step (springt erst am Punkt), lin (Standard) oder exp.
+// Vor dem ersten Punkt gilt dessen Wert, nach dem letzten der letzte.
+function automationAt(points,beat){
+  let i=-1;
+  while(i+1<points.length&&points[i+1].t<=beat)i++;
+  if(i<0)return points[0].v;
+  const a=points[i],b=points[i+1];
+  if(!b||b.curve==='step'||b.t<=a.t)return a.v;
+  const x=(beat-a.t)/(b.t-a.t);
+  if(b.curve==='exp'&&a.v>0&&b.v>0)return a.v*Math.pow(b.v/a.v,x);
+  return a.v+(b.v-a.v)*x;
+}
+
+export {notesBetween,structureKey,automationAt};

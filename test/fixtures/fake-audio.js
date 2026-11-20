@@ -60,6 +60,7 @@ class FakeAudioContext {
     const n = new FakeNode(this, 'compressor');
     n.threshold = new FakeParam(this, -24); n.knee = new FakeParam(this, 30); n.ratio = new FakeParam(this, 12); return n;
   }
+  createDelay() { const n = new FakeNode(this, 'delay'); n.delayTime = new FakeParam(this, 0); return n; }
   createOscillator() {
     const n = new FakeSource(this, 'osc'); n.type = 'sine';
     n.frequency = new FakeParam(this, 440); n.detune = new FakeParam(this, 0); return n;
