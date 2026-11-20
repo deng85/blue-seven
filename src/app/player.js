@@ -2,17 +2,18 @@
 /* Verbindet die Bedienung mit der Engine. Baut aus der aktuellen Folge und den Einstellungen den Song,
    startet und stoppt, spielt einen Akkord zum Anhören an und zeigt, welcher Akkord gerade klingt.
    Die Engine selbst kennt die Oberfläche nicht. */
-import {$,S,chords,run,progression,bassNote} from './state.js';
+import {$,S,chords,run,progression,bassNote,styleMod,styleParams} from './state.js';
 import {setActive,showNotes} from './ui.js';
 import {registry} from './modules.js';
 import {createEngine} from '../engine/engine.js';
-import {faderToGain} from '../core/gain.js';
+import {faderToGain,gainToFader} from '../core/gain.js';
+import {mergeMixer} from '../core/mixmerge.js';
 
 const engine=createEngine(registry);
 engine.on('warning',msg=>{$('hint').textContent=msg;});
 engine.on('ended',()=>{if(run.playing)stop();});
 
-// Welcher Lautstärkeregler zu welchem Kanal gehört.
+// Die drei Lautstärken aus blueseven.v1 und ihre Kanäle. Sie werden weiter mitgeschrieben (F-P4).
 const VOLUMES=[['rhodes','volR'],['bass','volB'],['drums','volD']];
 
 function iosUnmute(){
@@ -38,21 +39,55 @@ function initAudio(){
   }
 }
 
-// Der Song zur aktuellen Folge: Stil Jazzy Beats mit Spielweise, Tempo und Swing aus den Einstellungen,
-// die Kanalpegel aus den Lautstärkereglern.
-function buildSong(){
+// Der Song, wie ihn der gewählte Stil aus der aktuellen Folge erzeugt, mit den Standardwerten des Stils im Mixer.
+function freshSong(){
   const p=progression();
-  if(!p)return null;
-  const song=registry.get('styles','jazzy-beats').generate(p,{feel:S.feel},{bpm:S.bpm,swing:S.swing,rnd:Math.random});
-  for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)ch.gain=faderToGain(S[key]);}
+  return p?styleMod().generate(p,styleParams(),{bpm:S.bpm,swing:S.swing,rnd:Math.random}):null;
+}
+// Der Song zur aktuellen Folge mit den Mixer-Einstellungen des Nutzers (F-P9). Hat der Nutzer noch nichts
+// verstellt, gelten die drei Lautstärken aus blueseven.v1.
+function buildSong(){
+  const song=freshSong();
+  if(!song)return null;
+  if(S.mix)song.mixer=mergeMixer(song.mixer,S.mix);
+  else for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)ch.gain=faderToGain(S[key]);}
   return song;
 }
 // Gibt der Engine den Song zur aktuellen Folge. Im Lauf gilt er ab dem nächsten Takt.
 function refresh(){
   try{const song=buildSong();if(song)engine.load(song);}
-  catch(e){$('hint').textContent=e.message;console.error(e);}
+  catch(e){
+    // Ein unbrauchbarer gespeicherter Mixer darf die App nicht blockieren: einmal ohne ihn versuchen.
+    if(S.mix){delete S.mix;refresh();return;}
+    $('hint').textContent=e.message;console.error(e);
+  }
 }
-function setVolumes(){for(const [id,key] of VOLUMES)engine.setParam(`channel/${id}/gain`,faderToGain(S[key]));}
+// Hält S.mix und die drei alten Lautstärken auf dem Stand des Songs in der Engine (F-P8, F-P4).
+function syncMix(){
+  const song=engine.song();if(!song)return;
+  S.mix=song.mixer;
+  for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)S[key]=Math.round(gainToFader(ch.gain));}
+}
+// Setzt einen Mixer- oder Effektwert über seine Adresse. Er wirkt sofort und gehört ab dann zum Song.
+function setMix(address,value){
+  const ok=engine.setParam(address,value);
+  if(ok)syncMix();
+  return ok;
+}
+// Stellt die Standardwerte des Stils wieder her (F-P13). path: channel/<id>, return/<id>, master
+// oder einer davon mit /insert/<id> für einen einzelnen Effekt.
+function resetMix(path){
+  const def=freshSong();if(!def)return;
+  if(!S.mix)syncMix();
+  const [kind,a,b,c]=path.split('/'),find=(l,id)=>(l||[]).findIndex(x=>x.id===id);
+  const owner=mx=>kind==='master'?mx.master:mx[kind==='channel'?'channels':'returns'][find(mx[kind==='channel'?'channels':'returns'],a)];
+  const mine=owner(S.mix),std=owner(def.mixer),fx=kind==='master'?(a==='insert'?b:null):(b==='insert'?c:null);
+  if(!mine||!std)return;
+  if(fx){const i=find(mine.inserts,fx),j=find(std.inserts,fx);if(i>=0&&j>=0)mine.inserts[i]=std.inserts[j];}
+  else{for(const k in mine)delete mine[k];Object.assign(mine,std);}
+  refresh();syncMix();
+}
+const currentSong=()=>engine.song();
 
 // Nummer des Akkords, der bei beat im Song klingt, oder -1.
 function chordAt(song,beat){
@@ -91,4 +126,4 @@ function audition(i){
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
 
-export {start,stop,audition,refresh,setVolumes,chordAt};
+export {start,stop,audition,refresh,setMix,resetMix,currentSong,chordAt};

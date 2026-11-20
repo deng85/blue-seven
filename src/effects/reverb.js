@@ -8,7 +8,8 @@ function impulse(ac,sec){
 const reverb={
   type:'reverb',
   name:'Hall',
-  params:[{id:'seconds',name:'Dauer',type:'number',min:.2,max:6,step:.1,default:1.5,unit:'s'}],
+  // live:false: Die Oberfläche setzt den Wert erst beim Loslassen, weil jede Änderung die Impulsantwort neu berechnet.
+  params:[{id:'seconds',name:'Dauer',type:'number',min:.2,max:6,step:.1,default:1.5,unit:'s',live:false}],
   create(ac,p){
     const rev=ac.createConvolver();rev.buffer=impulse(ac,p.seconds);
     return {

@@ -87,3 +87,27 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .bar button:active,.tile:active,.seg button:active,.keys12 button:active{transform:translateY(1px)}
 @media (max-width:359px){.tile .root{font-size:38px}.tile .suf{font-size:18px}.bar button{font-size:18px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* module selection */
+select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-weight:600;font-size:15px;color:var(--paper);background:var(--panel);border:1px solid var(--line);border-radius:4px}
+#styleParams{display:flex;flex-direction:column;gap:10px}
+#styleParams:empty{display:none}
+
+/* mixer: one strip per channel, details fold out below */
+.mixer{display:flex;flex-direction:column;gap:10px}
+.mixer h3{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:6px 0 0}
+.strip{display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--deep);border:1px solid var(--line);border-radius:4px}
+.strip-head,.fx-head{display:flex;align-items:center;gap:6px}
+.strip-name{flex:1;min-width:0;font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.03em;overflow-wrap:anywhere}
+.tog,.mini{min-height:44px;min-width:60px;padding:0 10px;border:1px solid var(--line);background:var(--panel);border-radius:4px;font-weight:600;font-size:14px}
+.tog[aria-pressed="true"]{background:var(--hot);border-color:var(--hot);color:var(--hot-ink)}
+.mini{color:var(--muted);background:transparent}
+.mini.wide{width:100%}
+.strip details{border-top:1px solid var(--line)}
+.strip summary{min-height:44px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;list-style:none}
+.strip summary::-webkit-details-marker{display:none}
+.strip summary::before{content:'+';font-family:var(--display);font-weight:700;font-size:20px;width:14px;text-align:center}
+.strip details[open] summary::before{content:'–'}
+.strip-detail{display:flex;flex-direction:column;gap:10px;padding-bottom:4px}
+.fx{display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--ink);border:1px solid var(--line);border-radius:4px}
+.fx-head span{flex:1;min-width:0;font-weight:600;font-size:15px}
