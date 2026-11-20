@@ -4,7 +4,9 @@ import {normalize} from '../core/params.js';
 import {registry} from './modules.js';
 
 const $=id=>document.getElementById(id);
-const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR:80,volB:60,volD:45,loop:[],locks:[]};
+// Seit Phase 4 zusätzlich: chordGen und style (gewählte Module), sp (Stilparameter pro Stil) und mix
+// (Mixer des aktuellen Songs, erst vorhanden, wenn der Nutzer etwas verstellt hat). Die alten Felder behalten ihre Bedeutung.
+const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR:80,volB:60,volD:45,loop:[],locks:[],chordGen:'jazzy',style:'jazzy-beats'};
 // Exportierte Namen werden nie neu zugewiesen, nur ihr Inhalt ändert sich. So sehen alle Module denselben Stand.
 // chords sind die Akkorde der aktuellen Folge im Format blueseven.chords, recent die zuletzt erzeugten Folgen.
 const S=Object.assign({},DEF),favs=[],hist=[],recent=[],chords=[];
@@ -13,8 +15,7 @@ const run={playing:false,active:-1};   // läuft gerade etwas, und welcher Akkor
 const LS='blueseven.v1';
 
 /* ---------- Akkord-Generator ---------- */
-// Vorerst fest Jazzy. Die Auswahl in der Oberfläche kommt mit Phase 4.
-const chordGen=()=>registry.get('chords','jazzy');
+const chordGen=()=>registry.get('chords',S.chordGen)||registry.list('chords')[0];
 const genParams=()=>normalize(chordGen().params,{n:S.n,spice:S.spice,nine:S.nine});
 // Unter blueseven.v1 und in den gemerkten Folgen steht eine Folge als Liste von Stufen-IDs.
 // Das hier macht daraus wieder eine Akkordfolge: über update des Generators, der nur die IDs liest.
@@ -23,6 +24,18 @@ function fromIds(ids,key,mode){
   return chordGen().update({chords:ids.map(id=>({source:{id}}))},genParams(),{key,mode});
 }
 const idsOf=p=>p.chords.map(c=>c.source.id);
+/* ---------- Stil ---------- */
+const styleMod=()=>registry.get('styles',S.style)||registry.list('styles')[0];
+// Parameter des gewählten Stils. Die Spielweise von Jazzy Beats steht weiter in S.feel, alles andere unter S.sp.
+function styleParams(){
+  const st=styleMod(),own=S.sp&&S.sp[st.id];
+  return normalize(st.params||[],Object.assign({},own,st.id==='jazzy-beats'?{feel:S.feel}:null));
+}
+function setStyleParam(id,value){
+  const st=styleMod();
+  if(st.id==='jazzy-beats'&&id==='feel'){S.feel=value;return;}
+  S.sp=S.sp||{};(S.sp[st.id]=S.sp[st.id]||{})[id]=value;
+}
 // Basston eines Akkords als MIDI-Note in der tiefen Oktave.
 const bassNote=c=>36+(c.bass===undefined?c.root:c.bass);
 
@@ -35,6 +48,10 @@ function load(d){
     favs.length=0;if(Array.isArray(src.favs))favs.push(...src.favs);
     if(!MODES.includes(S.mode))S.mode='dur';
     S.n=S.n===3?3:4;
+    if(!registry.has('chords',S.chordGen))S.chordGen=DEF.chordGen;
+    if(!registry.has('styles',S.style))S.style=DEF.style;
+    if(!S.mix||typeof S.mix!=='object'||Array.isArray(S.mix))delete S.mix;
+    if(!S.sp||typeof S.sp!=='object'||Array.isArray(S.sp))delete S.sp;
     if(!Array.isArray(S.loop)||S.loop.length!==S.n||!fromIds(S.loop,S.key,S.mode))S.loop=[];
   }
   S.locks=Array.from({length:S.n},(_,i)=>!!(S.locks&&S.locks[i]&&S.loop[i]));
@@ -49,5 +66,5 @@ const progression=()=>current;
 function revoice(){setProg(fromIds(S.loop,S.key,S.mode));}
 function pushHist(){if(S.loop.length){hist.push({key:S.key,mode:S.mode,n:S.n,loop:S.loop.slice()});if(hist.length>30)hist.shift();}}
 
-export {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,progression,revoice,pushHist};
+export {$,S,favs,hist,recent,chords,run,chordGen,genParams,styleMod,styleParams,setStyleParam,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,progression,revoice,pushHist};
 

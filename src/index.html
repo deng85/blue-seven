@@ -26,6 +26,7 @@
 
   <section>
     <h2>Folge</h2>
+    <div class="row"><div class="lab"><label for="selChords">Akkord-Generator</label></div><select id="selChords"></select></div>
     <div class="two">
       <div class="row"><div class="lab"><span>Akkorde</span></div>
         <div class="seg" id="segN"><button data-v="3">3</button><button data-v="4">4</button></div></div>
@@ -44,8 +45,8 @@
 
   <section>
     <h2>Groove</h2>
-    <div class="row"><div class="lab"><span>Spielweise</span></div>
-      <div class="seg" id="segFeel"><button data-v="pad">Liegend</button><button data-v="comp">Comping</button><button data-v="arp">Gebrochen</button></div></div>
+    <div class="row"><div class="lab"><label for="selStyle">Stil</label></div><select id="selStyle"></select></div>
+    <div id="styleParams"></div>
     <div class="two">
       <div class="row"><div class="lab"><label for="bpm">Tempo</label><output id="bpmOut"></output></div><input type="range" id="bpm" min="56" max="132" step="1"></div>
       <div class="row"><div class="lab"><label for="swing">Swing</label><output id="swingOut"></output></div><input type="range" id="swing" min="0" max="100" step="5"></div>
@@ -54,17 +55,14 @@
 
   <section>
     <h2>Mixer</h2>
-    <div class="row"><div class="lab"><label for="volR">Rhodes</label><output id="volROut"></output></div><input type="range" id="volR" min="0" max="100" step="1"></div>
-    <div class="two">
-      <div class="row"><div class="lab"><label for="volB">Bass</label><output id="volBOut"></output></div><input type="range" id="volB" min="0" max="100" step="1"></div>
-      <div class="row"><div class="lab"><label for="volD">Drums</label><output id="volDOut"></output></div><input type="range" id="volD" min="0" max="100" step="1"></div>
-    </div>
+    <div class="mixer" id="mixer"></div>
+    <p class="hint">Die Einstellungen gehören zum Song und bleiben beim Würfeln erhalten.</p>
   </section>
 
   <section>
     <h2>Gemerkte Folgen</h2>
     <div class="favs" id="favs"></div>
-    <p class="hint">Kein Ton auf dem iPhone? Lautstärke hochdrehen und den Stummschalter prüfen.</p>
+    <p class="hint">Kein Ton? Medienlautstärke hochdrehen, auf dem iPhone auch den Stummschalter prüfen.</p>
   </section>
 </div>
 

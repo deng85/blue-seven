@@ -1,5 +1,7 @@
 /* ================= Oberfläche ================= */
-import {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName} from './state.js';
+import {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName,styleMod,styleParams} from './state.js';
+import {registry} from './modules.js';
+import {esc,controlHtml} from './ui-params.js';
 
 function buildKeys(){
   const W=10,H=46,white=[0,2,4,5,7,9,11];let wi=0,ws='',bs='';
@@ -28,14 +30,26 @@ function render(){
     <button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button></div>`).join('');
   setActive(run.playing?run.active:-1);
   $('status').innerHTML=`${keyName()}<br>${S.bpm} BPM`;
-  seg('segN',S.n);seg('segMode',S.mode);seg('segFeel',S.feel);seg('segNine',S.nine);
+  seg('segN',S.n);seg('segMode',S.mode);seg('segNine',S.nine);
   document.querySelectorAll('#keys12 button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===S.key)));
-  for(const id of ['spice','bpm','swing','volR','volB','volD'])$(id).value=S[id];
+  for(const id of ['spice','bpm','swing'])$(id).value=S[id];
   $('spiceOut').textContent=S.spice===0?'pur':S.spice+' %';
   $('bpmOut').textContent=S.bpm+' BPM';$('swingOut').textContent=S.swing+' %';
-  $('volROut').textContent=S.volR;$('volBOut').textContent=S.volB;$('volDOut').textContent=S.volD;
   $('back').disabled=!hist.length;
   renderFavs();
+}
+// Auswahl von Akkord-Generator und Stil aus der Registry, dazu die Regler des gewählten Stils aus dessen
+// Parameterbeschreibung und der Tempobereich des Stils. Wird beim Start und nach einem Stilwechsel gezeichnet.
+function renderModules(){
+  const opts=(list,cur)=>list.map(m=>`<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('');
+  $('selChords').innerHTML=opts(registry.list('chords'),S.chordGen);
+  $('selStyle').innerHTML=opts(registry.list('styles'),S.style);
+  const st=styleMod(),p=styleParams();
+  $('styleParams').innerHTML=(st.params||[]).map(x=>controlHtml(x,p[x.id],'sp-'+x.id,`data-style-param="${esc(x.id)}"`)).join('');
+  if(st.tempo){
+    $('bpm').min=st.tempo.min;$('bpm').max=st.tempo.max;
+    S.bpm=Math.min(st.tempo.max,Math.max(st.tempo.min,S.bpm));
+  }
 }
 function renderFavs(){
   const el=$('favs');
@@ -48,4 +62,4 @@ function renderFavs(){
 }
 
 
-export {buildKeys,showNotes,setActive,render,renderFavs};
+export {buildKeys,showNotes,setActive,render,renderFavs,renderModules};

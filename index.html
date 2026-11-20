@@ -97,6 +97,36 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .bar button:active,.tile:active,.seg button:active,.keys12 button:active{transform:translateY(1px)}
 @media (max-width:359px){.tile .root{font-size:38px}.tile .suf{font-size:18px}.bar button{font-size:18px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* module selection */
+select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-weight:600;font-size:15px;color:var(--paper);background:var(--panel);border:1px solid var(--line);border-radius:4px}
+#styleParams{display:flex;flex-direction:column;gap:10px}
+#styleParams:empty{display:none}
+
+/* mixer: one strip per channel, details fold out below */
+.mixer{display:flex;flex-direction:column;gap:10px}
+.mixer h3{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:6px 0 0}
+.strip{display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--deep);border:1px solid var(--line);border-radius:4px}
+.strip-head,.fx-head{display:flex;align-items:center;gap:6px}
+.strip-name{flex:1;min-width:0;font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.03em;overflow-wrap:anywhere}
+.tog,.mini{min-height:44px;min-width:60px;padding:0 10px;border:1px solid var(--line);background:var(--panel);border-radius:4px;font-weight:600;font-size:14px}
+.tog[aria-pressed="true"]{background:var(--hot);border-color:var(--hot);color:var(--hot-ink)}
+.mini{color:var(--muted);background:transparent}
+.mini.wide{width:100%}
+.strip details{border-top:1px solid var(--line)}
+.strip summary{min-height:44px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;list-style:none}
+.strip summary::-webkit-details-marker{display:none}
+.strip summary::before{content:'+';font-family:var(--display);font-weight:700;font-size:20px;width:14px;text-align:center}
+.strip details[open] summary::before{content:'–'}
+.strip-detail{display:flex;flex-direction:column;gap:10px;padding-bottom:4px}
+.fx{display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--ink);border:1px solid var(--line);border-radius:4px}
+.fx-head span{flex:1;min-width:0;font-weight:600;font-size:15px}
+.graph svg{display:block;width:100%;height:auto;background:var(--deep);border-radius:3px}
+.graph text{font-size:9px;fill:var(--muted);font-family:var(--body)}
+.graph .grid{stroke:var(--line);stroke-width:.5}
+.graph .unity{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.graph .mark{stroke:var(--paper);stroke-width:.75;stroke-dasharray:1 3}
+.graph .curve{fill:none;stroke:var(--hot);stroke-width:2.5;stroke-linejoin:round}
 </style>
 </head>
 <body>
@@ -114,6 +144,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 
   <section>
     <h2>Folge</h2>
+    <div class="row"><div class="lab"><label for="selChords">Akkord-Generator</label></div><select id="selChords"></select></div>
     <div class="two">
       <div class="row"><div class="lab"><span>Akkorde</span></div>
         <div class="seg" id="segN"><button data-v="3">3</button><button data-v="4">4</button></div></div>
@@ -132,8 +163,8 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 
   <section>
     <h2>Groove</h2>
-    <div class="row"><div class="lab"><span>Spielweise</span></div>
-      <div class="seg" id="segFeel"><button data-v="pad">Liegend</button><button data-v="comp">Comping</button><button data-v="arp">Gebrochen</button></div></div>
+    <div class="row"><div class="lab"><label for="selStyle">Stil</label></div><select id="selStyle"></select></div>
+    <div id="styleParams"></div>
     <div class="two">
       <div class="row"><div class="lab"><label for="bpm">Tempo</label><output id="bpmOut"></output></div><input type="range" id="bpm" min="56" max="132" step="1"></div>
       <div class="row"><div class="lab"><label for="swing">Swing</label><output id="swingOut"></output></div><input type="range" id="swing" min="0" max="100" step="5"></div>
@@ -142,17 +173,14 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 
   <section>
     <h2>Mixer</h2>
-    <div class="row"><div class="lab"><label for="volR">Rhodes</label><output id="volROut"></output></div><input type="range" id="volR" min="0" max="100" step="1"></div>
-    <div class="two">
-      <div class="row"><div class="lab"><label for="volB">Bass</label><output id="volBOut"></output></div><input type="range" id="volB" min="0" max="100" step="1"></div>
-      <div class="row"><div class="lab"><label for="volD">Drums</label><output id="volDOut"></output></div><input type="range" id="volD" min="0" max="100" step="1"></div>
-    </div>
+    <div class="mixer" id="mixer"></div>
+    <p class="hint">Die Einstellungen gehören zum Song und bleiben beim Würfeln erhalten.</p>
   </section>
 
   <section>
     <h2>Gemerkte Folgen</h2>
     <div class="favs" id="favs"></div>
-    <p class="hint">Kein Ton auf dem iPhone? Lautstärke hochdrehen und den Stummschalter prüfen.</p>
+    <p class="hint">Kein Ton? Medienlautstärke hochdrehen, auf dem iPhone auch den Stummschalter prüfen.</p>
   </section>
 </div>
 
@@ -1171,7 +1199,8 @@ function impulse(ac,sec){
 const reverb={
   type:'reverb',
   name:'Hall',
-  params:[{id:'seconds',name:'Dauer',type:'number',min:.2,max:6,step:.1,default:1.5,unit:'s'}],
+  // live:false: Die Oberfläche setzt den Wert erst beim Loslassen, weil jede Änderung die Impulsantwort neu berechnet.
+  params:[{id:'seconds',name:'Dauer',type:'number',min:.2,max:6,step:.1,default:1.5,unit:'s',live:false}],
   create(ac,p){
     const rev=ac.createConvolver();rev.buffer=impulse(ac,p.seconds);
     return {
@@ -1187,26 +1216,46 @@ return {reverb};
 /* ---------- effects/compressor.js ---------- */
 const __mod15=(function(){
 /* ================= Effekt „Kompressor“ ================= */
+/* Das Knie ist der Bereich oberhalb der Schwelle, in dem die Kompression weich einsetzt. 30 dB ist der
+   Standard des Browsers und damit der bisherige Klang.
+   graph(params) beschreibt die Kennlinie für die Oberfläche: Eingangspegel gegen Ausgangspegel in dB.
+   Sie ist eine Näherung (quadratisches Knie) und zeigt die automatische Pegelanhebung des Browsers nicht. */
+const FLOOR=-60;
+// Ausgangspegel in dB zu einem Eingangspegel in dB.
+function transfer(p,x){
+  const t=p.threshold,k=p.knee,s=1/p.ratio;
+  if(x<=t)return x;
+  if(x<t+k)return x+(s-1)*(x-t)*(x-t)/(2*k);
+  return t+k*(1+s)/2+(x-t-k)*s;
+}
 const compressor={
   type:'compressor',
   name:'Kompressor',
   params:[
     {id:'threshold',name:'Schwelle',type:'number',min:-60,max:0,step:1,default:-16,unit:'dB'},
+    {id:'knee',name:'Knie',type:'number',min:0,max:40,step:1,default:30,unit:'dB'},
     {id:'ratio',name:'Verhältnis',type:'number',min:1,max:20,step:.5,default:4}
   ],
+  graph(p){
+    const points=[];
+    for(let x=FLOOR;x<=0;x+=1)points.push([x,transfer(p,x)]);
+    return {kind:'transfer',min:FLOOR,max:0,points,marks:[{x:p.threshold,name:'Schwelle'},{x:Math.min(0,p.threshold+p.knee),name:'Knie'}],
+      note:`${String(p.ratio).replace('.',',')} : 1 oberhalb des Knies`};
+  },
   create(ac,p){
-    const c=ac.createDynamicsCompressor();c.threshold.value=p.threshold;c.ratio.value=p.ratio;
+    const c=ac.createDynamicsCompressor();c.threshold.value=p.threshold;c.knee.value=p.knee;c.ratio.value=p.ratio;
     return {
       input:c,output:c,
       setParam(id,v,t){
         if(id==='threshold')c.threshold.setTargetAtTime(v,t,.02);
+        else if(id==='knee')c.knee.setTargetAtTime(v,t,.02);
         else if(id==='ratio')c.ratio.setTargetAtTime(v,t,.02);
       },
       dispose(){c.disconnect();}
     };
   }
 };
-return {compressor};
+return {compressor,transfer};
 })();
 
 /* ---------- app/modules.js ---------- */
@@ -1254,7 +1303,9 @@ const {registry}=__mod16;
 
 
 const $=id=>document.getElementById(id);
-const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR:80,volB:60,volD:45,loop:[],locks:[]};
+// Seit Phase 4 zusätzlich: chordGen und style (gewählte Module), sp (Stilparameter pro Stil) und mix
+// (Mixer des aktuellen Songs, erst vorhanden, wenn der Nutzer etwas verstellt hat). Die alten Felder behalten ihre Bedeutung.
+const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR:80,volB:60,volD:45,loop:[],locks:[],chordGen:'jazzy',style:'jazzy-beats'};
 // Exportierte Namen werden nie neu zugewiesen, nur ihr Inhalt ändert sich. So sehen alle Module denselben Stand.
 // chords sind die Akkorde der aktuellen Folge im Format blueseven.chords, recent die zuletzt erzeugten Folgen.
 const S=Object.assign({},DEF),favs=[],hist=[],recent=[],chords=[];
@@ -1263,8 +1314,7 @@ const run={playing:false,active:-1};   // läuft gerade etwas, und welcher Akkor
 const LS='blueseven.v1';
 
 /* ---------- Akkord-Generator ---------- */
-// Vorerst fest Jazzy. Die Auswahl in der Oberfläche kommt mit Phase 4.
-const chordGen=()=>registry.get('chords','jazzy');
+const chordGen=()=>registry.get('chords',S.chordGen)||registry.list('chords')[0];
 const genParams=()=>normalize(chordGen().params,{n:S.n,spice:S.spice,nine:S.nine});
 // Unter blueseven.v1 und in den gemerkten Folgen steht eine Folge als Liste von Stufen-IDs.
 // Das hier macht daraus wieder eine Akkordfolge: über update des Generators, der nur die IDs liest.
@@ -1273,6 +1323,18 @@ function fromIds(ids,key,mode){
   return chordGen().update({chords:ids.map(id=>({source:{id}}))},genParams(),{key,mode});
 }
 const idsOf=p=>p.chords.map(c=>c.source.id);
+/* ---------- Stil ---------- */
+const styleMod=()=>registry.get('styles',S.style)||registry.list('styles')[0];
+// Parameter des gewählten Stils. Die Spielweise von Jazzy Beats steht weiter in S.feel, alles andere unter S.sp.
+function styleParams(){
+  const st=styleMod(),own=S.sp&&S.sp[st.id];
+  return normalize(st.params||[],Object.assign({},own,st.id==='jazzy-beats'?{feel:S.feel}:null));
+}
+function setStyleParam(id,value){
+  const st=styleMod();
+  if(st.id==='jazzy-beats'&&id==='feel'){S.feel=value;return;}
+  S.sp=S.sp||{};(S.sp[st.id]=S.sp[st.id]||{})[id]=value;
+}
 // Basston eines Akkords als MIDI-Note in der tiefen Oktave.
 const bassNote=c=>36+(c.bass===undefined?c.root:c.bass);
 
@@ -1285,6 +1347,10 @@ function load(d){
     favs.length=0;if(Array.isArray(src.favs))favs.push(...src.favs);
     if(!MODES.includes(S.mode))S.mode='dur';
     S.n=S.n===3?3:4;
+    if(!registry.has('chords',S.chordGen))S.chordGen=DEF.chordGen;
+    if(!registry.has('styles',S.style))S.style=DEF.style;
+    if(!S.mix||typeof S.mix!=='object'||Array.isArray(S.mix))delete S.mix;
+    if(!S.sp||typeof S.sp!=='object'||Array.isArray(S.sp))delete S.sp;
     if(!Array.isArray(S.loop)||S.loop.length!==S.n||!fromIds(S.loop,S.key,S.mode))S.loop=[];
   }
   S.locks=Array.from({length:S.n},(_,i)=>!!(S.locks&&S.locks[i]&&S.loop[i]));
@@ -1298,13 +1364,77 @@ const progression=()=>current;
 // Die aktuelle Folge neu ausgeben, zum Beispiel nach Tonartwechsel oder None an/aus.
 function revoice(){setProg(fromIds(S.loop,S.key,S.mode));}
 function pushHist(){if(S.loop.length){hist.push({key:S.key,mode:S.mode,n:S.n,loop:S.loop.slice()});if(hist.length>30)hist.shift();}}
-return {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,progression,revoice,pushHist};
+return {$,S,favs,hist,recent,chords,run,chordGen,genParams,styleMod,styleParams,setStyleParam,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,progression,revoice,pushHist};
+})();
+
+/* ---------- app/ui-params.js ---------- */
+const __mod18=(function(){
+const {normalizeValue}=__mod1;
+/* ================= Regler aus Parameterbeschreibungen ================= */
+/* Baut für einen Parameter (Abschnitt core/params.js) das passende Bedienelement und liest es wieder aus.
+   Stilparameter und Effektparameter benutzen dieselben Bausteine. */
+
+
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const POS=1000;   // Auflösung eines Reglers mit Kurve exp
+
+// Zahl mit Komma und höchstens zwei Nachkommastellen.
+function num(v){
+  const a=Math.abs(v),d=a>=100?0:a>=10?1:2;
+  return String(+v.toFixed(d)).replace('.',',');
+}
+// Wert eines Parameters für die Anzeige.
+function formatValue(p,v){
+  if(p.type==='enum'){const o=p.options.find(x=>x.value===v);return o?o.name:String(v);}
+  if(p.type==='bool')return v?'An':'Aus';
+  if(p.unit==='Hz'&&v>=1000)return num(v/1000)+' kHz';
+  return num(v)+(p.unit?' '+p.unit:'');
+}
+// Stellung eines Schiebereglers zu einem Wert und zurück.
+const toPos=(p,v)=>p.curve==='exp'?Math.round(POS*Math.log(v/p.min)/Math.log(p.max/p.min)):v;
+const fromPos=(p,x)=>normalizeValue(p,p.curve==='exp'?p.min*Math.pow(p.max/p.min,x/POS):x);
+
+// HTML für einen Parameter. id muss auf der Seite eindeutig sein, attrs sind zusätzliche Attribute
+// (zum Beispiel data-addr), die auf dem Bedienelement landen.
+function controlHtml(p,value,id,attrs){
+  const v=normalizeValue(p,value),extra=attrs||'';
+  if(p.type==='number'){
+    const exp=p.curve==='exp',step=exp?1:(p.step||(p.max-p.min)/200);
+    return `<div class="row"><div class="lab"><label for="${id}">${esc(p.name)}</label><output>${esc(formatValue(p,v))}</output></div>`+
+      `<input type="range" id="${id}" min="${exp?0:p.min}" max="${exp?POS:p.max}" step="${step}" value="${toPos(p,v)}"${p.live===false?' data-live="0"':''} ${extra}></div>`;
+  }
+  if(p.type==='enum')return `<div class="row"><div class="lab"><span>${esc(p.name)}</span></div><div class="seg" id="${id}" ${extra}>`+
+    p.options.map((o,i)=>`<button data-i="${i}" aria-pressed="${o.value===v}">${esc(o.name)}</button>`).join('')+'</div></div>';
+  return `<div class="row"><div class="lab"><span>${esc(p.name)}</span></div><button class="tog" id="${id}" aria-pressed="${!!v}" ${extra}>${v?'An':'Aus'}</button></div>`;
+}
+// Liest den Wert nach einer Bedienung. el ist der Schieberegler oder der angetippte Knopf.
+// Bringt auch die Anzeige auf den neuen Stand.
+function readControl(p,el){
+  if(p.type==='number'){
+    const v=fromPos(p,+el.value),out=el.closest('.row').querySelector('output');
+    if(out)out.textContent=formatValue(p,v);
+    return v;
+  }
+  if(p.type==='enum'){
+    const o=p.options[+el.dataset.i];
+    el.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===el)));
+    return o.value;
+  }
+  const v=el.getAttribute('aria-pressed')!=='true';
+  el.setAttribute('aria-pressed',String(v));el.textContent=v?'An':'Aus';
+  return v;
+}
+return {esc,num,formatValue,controlHtml,readControl};
 })();
 
 /* ---------- app/ui.js ---------- */
-const __mod18=(function(){
-const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName}=__mod17;
+const __mod19=(function(){
+const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName,styleMod,styleParams}=__mod17;
+const {registry}=__mod16;
+const {esc,controlHtml}=__mod18;
 /* ================= Oberfläche ================= */
+
+
 
 
 function buildKeys(){
@@ -1334,14 +1464,26 @@ function render(){
     <button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button></div>`).join('');
   setActive(run.playing?run.active:-1);
   $('status').innerHTML=`${keyName()}<br>${S.bpm} BPM`;
-  seg('segN',S.n);seg('segMode',S.mode);seg('segFeel',S.feel);seg('segNine',S.nine);
+  seg('segN',S.n);seg('segMode',S.mode);seg('segNine',S.nine);
   document.querySelectorAll('#keys12 button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===S.key)));
-  for(const id of ['spice','bpm','swing','volR','volB','volD'])$(id).value=S[id];
+  for(const id of ['spice','bpm','swing'])$(id).value=S[id];
   $('spiceOut').textContent=S.spice===0?'pur':S.spice+' %';
   $('bpmOut').textContent=S.bpm+' BPM';$('swingOut').textContent=S.swing+' %';
-  $('volROut').textContent=S.volR;$('volBOut').textContent=S.volB;$('volDOut').textContent=S.volD;
   $('back').disabled=!hist.length;
   renderFavs();
+}
+// Auswahl von Akkord-Generator und Stil aus der Registry, dazu die Regler des gewählten Stils aus dessen
+// Parameterbeschreibung und der Tempobereich des Stils. Wird beim Start und nach einem Stilwechsel gezeichnet.
+function renderModules(){
+  const opts=(list,cur)=>list.map(m=>`<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('');
+  $('selChords').innerHTML=opts(registry.list('chords'),S.chordGen);
+  $('selStyle').innerHTML=opts(registry.list('styles'),S.style);
+  const st=styleMod(),p=styleParams();
+  $('styleParams').innerHTML=(st.params||[]).map(x=>controlHtml(x,p[x.id],'sp-'+x.id,`data-style-param="${esc(x.id)}"`)).join('');
+  if(st.tempo){
+    $('bpm').min=st.tempo.min;$('bpm').max=st.tempo.max;
+    S.bpm=Math.min(st.tempo.max,Math.max(st.tempo.min,S.bpm));
+  }
 }
 function renderFavs(){
   const el=$('favs');
@@ -1352,11 +1494,137 @@ function renderFavs(){
     return `<div class="fav"><button class="load" data-i="${i}"><b>${kn}</b>${names}</button><button class="del" data-i="${i}" aria-label="Folge ${i+1} löschen">×</button></div>`;
   }).join('');
 }
-return {buildKeys,showNotes,setActive,render,renderFavs};
+return {buildKeys,showNotes,setActive,render,renderFavs,renderModules};
+})();
+
+/* ---------- app/ui-mixer.js ---------- */
+const __mod20=(function(){
+const {$}=__mod17;
+const {registry}=__mod16;
+const {esc,controlHtml,readControl}=__mod18;
+const {normalize}=__mod1;
+const {faderToGain,gainToFader}=__mod6;
+/* ================= Mixer in der Oberfläche ================= */
+/* Zeigt den Mixer des aktuellen Songs: pro Kanal Lautstärke, Mute und Solo, dazu aufklappbar Panorama, Sends
+   und Effekte. Effektspuren und Summe genauso. Alles entsteht aus dem Song und aus den Parameterbeschreibungen
+   der Effekte, es gibt keine festen Regler für bestimmte Kanäle.
+   Jedes Bedienelement trägt die Adresse seines Werts (Abschnitt 9.4), zum Beispiel channel/rhodes/gain. */
+
+
+
+
+
+
+const fmtPan=v=>{const n=Math.round(v*100);return n===0?'Mitte':n<0?`${-n} links`:`${n} rechts`;};
+const slug=a=>'mx-'+a.replace(/[^A-Za-z0-9]+/g,'-');
+
+function slider(label,addr,kind,min,max,value,text){
+  const id=slug(addr);
+  return `<div class="row"><div class="lab"><label for="${id}">${esc(label)}</label><output>${esc(text)}</output></div>`+
+    `<input type="range" id="${id}" min="${min}" max="${max}" step="1" value="${value}" data-addr="${esc(addr)}" data-kind="${kind}"></div>`;
+}
+const toggle=(label,addr,on,aria)=>`<button class="tog" data-addr="${esc(addr)}" aria-pressed="${!!on}"${aria?` aria-label="${esc(aria)}"`:''}>${esc(label)}</button>`;
+
+// Schaubild eines Effekts, wenn sein Modul eines beschreibt (graph). Bisher: Kennlinie des Kompressors,
+// Eingangspegel nach rechts, Ausgangspegel nach oben, gestrichelt die Linie ohne Kompression.
+function graphSvg(mod,params){
+  const g=mod.graph(normalize(mod.params||[],params)),W=240,H=150,L=30,B=18,w=W-L-4,h=H-B-4,span=g.max-g.min;
+  const X=v=>L+(v-g.min)/span*w,Y=v=>4+h-(Math.max(g.min,v)-g.min)/span*h,f=n=>n.toFixed(1);
+  let grid='';
+  for(let v=g.min;v<=g.max;v+=20)grid+=`<line class="grid" x1="${f(X(v))}" y1="4" x2="${f(X(v))}" y2="${4+h}"/><line class="grid" x1="${L}" y1="${f(Y(v))}" x2="${L+w}" y2="${f(Y(v))}"/>`+
+    `<text x="${f(X(v))}" y="${H-5}" text-anchor="middle">${v}</text><text x="${L-4}" y="${f(Y(v)+3)}" text-anchor="end">${v}</text>`;
+  const marks=g.marks.map(m=>`<line class="mark" x1="${f(X(m.x))}" y1="4" x2="${f(X(m.x))}" y2="${4+h}"/>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Kennlinie: ${esc(g.marks.map(m=>m.name+' bei '+Math.round(m.x)+' dB').join(', '))}, ${esc(g.note)}">${grid}${marks}`+
+    `<line class="unity" x1="${L}" y1="${4+h}" x2="${L+w}" y2="4"/><polyline class="curve" points="${g.points.map(([a,b])=>f(X(a))+','+f(Y(b))).join(' ')}"/></svg>`+
+    `<p class="hint">Eingang nach rechts, Ausgang nach oben, in dB. ${esc(g.note)}.</p>`;
+}
+function insertHtml(base,x){
+  const mod=registry.get('effects',x.type),addr=`${base}/insert/${x.id}`;
+  if(!mod)return `<div class="fx"><div class="fx-head"><span>${esc(x.type)}</span></div><p class="hint">Diesen Effekt gibt es in dieser Version nicht. Er wird übersprungen.</p></div>`;
+  const params=(mod.params||[]).map(p=>controlHtml(p,(x.params||{})[p.id],slug(`${addr}/${p.id}`),
+    `data-addr="${esc(addr+'/'+p.id)}" data-kind="param" data-fx="${esc(x.type)}" data-param="${esc(p.id)}"`)).join('');
+  return `<div class="fx"><div class="fx-head"><span>${esc(mod.name)}</span>`+
+    `<button class="tog" data-addr="${esc(addr)}/bypass" data-kind="bypass" aria-pressed="${!x.bypass}" aria-label="${esc(mod.name)} ein- oder ausschalten">${x.bypass?'Aus':'An'}</button>`+
+    `<button class="mini" data-reset="${esc(addr)}" aria-label="${esc(mod.name)} zurücksetzen">Zurück</button></div>`+
+    (mod.graph?`<div class="graph" data-graph="${esc(addr)}">${graphSvg(mod,x.params)}</div>`:'')+`${params}</div>`;
+}
+function stripHtml(kind,o,mx,open){
+  const base=kind==='master'?'master':`${kind}/${o.id}`,isCh=kind==='channel';
+  const name=kind==='master'?'Summe':o.name||o.id,fader=Math.round(gainToFader(o.gain));
+  const head=`<div class="strip-head"><span class="strip-name">${esc(name)}</span>`+
+    (kind==='master'?'':toggle('Mute',base+'/mute',o.mute,name+' stumm'))+(isCh?toggle('Solo',base+'/solo',o.solo,name+' allein hören'):'')+'</div>';
+  let detail='';
+  if(isCh){
+    detail+=slider('Panorama',base+'/pan','pan',-100,100,Math.round(o.pan*100),fmtPan(o.pan));
+    for(const s of o.sends||[]){
+      const r=(mx.returns||[]).find(x=>x.id===s.to);
+      detail+=slider(`Anteil auf ${r?r.name:s.to}`,`${base}/send/${s.to}`,'send',0,100,Math.round(s.gain*100),Math.round(s.gain*100)+' %');
+    }
+  }
+  detail+=(o.inserts||[]).map(x=>insertHtml(base,x)).join('');
+  const what=[isCh?'Panorama':'',isCh&&(o.sends||[]).length?'Sends':'',(o.inserts||[]).length?'Effekte':''].filter(Boolean).join(', ')||'Mehr';
+  return `<div class="strip">${head}${slider('Lautstärke',base+'/gain','fader',0,100,fader,String(fader))}`+
+    `<details data-id="${esc(base)}"${open.has(base)?' open':''}><summary>${what}</summary><div class="strip-detail">${detail}`+
+    `<button class="mini wide" data-reset="${esc(base)}">${kind==='master'?'Summe':kind==='return'?'Effektspur':'Kanal'} zurücksetzen</button></div></details></div>`;
+}
+
+// Zeichnet den Mixer neu. Aufgeklappte Details bleiben aufgeklappt.
+function renderMixer(song){
+  const el=$('mixer');
+  if(!song){el.innerHTML='';return;}
+  const open=new Set([...el.querySelectorAll('details[open]')].map(d=>d.dataset.id)),mx=song.mixer;
+  el.innerHTML=mx.channels.map(c=>stripHtml('channel',c,mx,open)).join('')+
+    (mx.returns.length?'<h3>Effektspuren</h3>'+mx.returns.map(r=>stripHtml('return',r,mx,open)).join(''):'')+
+    '<h3>Summe</h3>'+stripHtml('master',mx.master,mx,open);
+}
+
+// Zeichnet das Schaubild des Effekts neu, zu dem die Adresse eines Parameters gehört.
+function updateGraph(address,song){
+  const m=address.match(/^(.*\/insert\/[^/]+)\//),box=m&&$('mixer').querySelector(`[data-graph="${m[1]}"]`);
+  if(!box||!song)return;
+  const a=m[1].split('/'),mx=song.mixer,find=(l,id)=>(l||[]).find(x=>x.id===id);
+  const owner=a[0]==='master'?mx.master:find(a[0]==='channel'?mx.channels:mx.returns,a[1]),x=owner&&find(owner.inserts,a[a.length-1]);
+  const mod=x&&registry.get('effects',x.type);
+  if(mod&&mod.graph)box.innerHTML=graphSvg(mod,x.params);
+}
+
+// Verbindet die Bedienelemente. on.set(adresse, wert) setzt einen Wert, on.song() liefert den aktuellen Song, on.reset(pfad) stellt die
+// Standardwerte des Stils wieder her (Kanal, Effektspur, Summe oder ein einzelner Effekt).
+function bindMixer(on){
+  const el=$('mixer');
+  const spec=t=>(registry.get('effects',t.dataset.fx).params||[]).find(p=>p.id===t.dataset.param);
+  function fromSlider(t){
+    const out=t.closest('.row').querySelector('output'),x=+t.value,k=t.dataset.kind;
+    if(k==='param')return readControl(spec(t),t);
+    if(k==='fader'){out.textContent=String(x);return faderToGain(x);}
+    if(k==='pan'){out.textContent=fmtPan(x/100);return x/100;}
+    out.textContent=x+' %';return x/100;
+  }
+  // Schieberegler wirken beim Ziehen. Ausnahme sind Parameter mit live:false, die erst beim Loslassen gelten.
+  el.addEventListener('input',e=>{
+    const t=e.target;if(!t.dataset.addr)return;
+    const v=fromSlider(t);
+    if(t.dataset.live!=='0'){on.set(t.dataset.addr,v);if(t.dataset.kind==='param')updateGraph(t.dataset.addr,on.song());}
+  });
+  el.addEventListener('change',e=>{const t=e.target;if(t.dataset.addr&&t.dataset.live==='0')on.set(t.dataset.addr,fromSlider(t));});
+  el.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    if(b.dataset.reset){on.reset(b.dataset.reset);return;}
+    const seg=b.closest('.seg[data-addr]');
+    if(seg){on.set(seg.dataset.addr,readControl(spec(seg),b));return;}
+    if(!b.dataset.addr)return;
+    if(b.dataset.kind==='param'){on.set(b.dataset.addr,readControl(spec(b),b));return;}
+    const pressed=b.getAttribute('aria-pressed')!=='true';
+    b.setAttribute('aria-pressed',String(pressed));
+    if(b.dataset.kind==='bypass'){b.textContent=pressed?'An':'Aus';on.set(b.dataset.addr,!pressed);}
+    else on.set(b.dataset.addr,pressed);
+  });
+}
+return {renderMixer,bindMixer};
 })();
 
 /* ---------- engine/timeline.js ---------- */
-const __mod19=(function(){
+const __mod21=(function(){
 /* ================= Zeitachse eines Songs ================= */
 /* Reine Funktionen ohne Web Audio: Welche Noten liegen in einem Zeitraum, und wie sieht der Song
    in seiner Struktur aus. Laufen in Node und werden dort getestet. */
@@ -1401,7 +1669,7 @@ return {notesBetween,structureKey};
 })();
 
 /* ---------- engine/mixer.js ---------- */
-const __mod20=(function(){
+const __mod22=(function(){
 const {normalize,normalizeValue}=__mod1;
 /* ================= Mixer ================= */
 /* Baut aus song.mixer den Signalweg und führt Werte nach.
@@ -1552,11 +1820,11 @@ return {buildMixer};
 })();
 
 /* ---------- engine/engine.js ---------- */
-const __mod21=(function(){
+const __mod23=(function(){
 const {normalize,normalizeValue}=__mod1;
 const {checkSong,checkAddress}=__mod3;
-const {notesBetween,structureKey}=__mod19;
-const {buildMixer}=__mod20;
+const {notesBetween,structureKey}=__mod21;
+const {buildMixer}=__mod22;
 /* ================= Engine ================= */
 /* Spielt jeden gültigen Song ab. Kennt weder die Oberfläche noch den App-Zustand, Instrumente und Effekte
    nur über die Registry.
@@ -1784,13 +2052,65 @@ function writeMixer(mx,parts,value){
 return {createEngine};
 })();
 
+/* ---------- core/mixmerge.js ---------- */
+const __mod24=(function(){
+/* ================= Mixer-Einstellungen übernehmen ================= */
+/* Wird der Inhalt eines Songs neu erzeugt, sollen die Einstellungen des Nutzers bleiben (F-P9).
+   mergeMixer nimmt den frisch erzeugten Mixer und trägt die Werte aus dem bisherigen ein. Zugeordnet wird
+   über die IDs von Kanälen, Effektspuren, Inserts und Sends. Was es im neuen Mixer nicht gibt, entfällt,
+   was im bisherigen fehlt oder unbrauchbar ist, behält den Wert des neuen. */
+
+const isObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+const byId=(list,id)=>Array.isArray(list)?list.find(x=>isObj(x)&&x.id===id):undefined;
+
+function carry(to,from,numbers,bools){
+  for(const k of numbers)if(typeof from[k]==='number'&&Number.isFinite(from[k]))to[k]=from[k];
+  for(const k of bools)if(typeof from[k]==='boolean')to[k]=from[k];
+}
+// Inserts: nur bei gleicher ID und gleichem Effekttyp.
+function carryInserts(to,from){
+  for(const x of to||[]){
+    const y=byId(from,x.id);
+    if(!y||y.type!==x.type)continue;
+    carry(x,y,[],['bypass']);
+    if(isObj(y.params))x.params=Object.assign({},x.params,y.params);
+  }
+}
+
+function mergeMixer(fresh,user){
+  const out=JSON.parse(JSON.stringify(fresh));
+  if(!isObj(user))return out;
+  for(const ch of out.channels||[]){
+    const u=byId(user.channels,ch.id);if(!u)continue;
+    carry(ch,u,['gain','pan'],['mute','solo']);
+    for(const s of ch.sends||[]){
+      const us=Array.isArray(u.sends)?u.sends.find(x=>isObj(x)&&x.to===s.to):undefined;
+      if(us)carry(s,us,['gain'],[]);
+    }
+    carryInserts(ch.inserts,u.inserts);
+  }
+  for(const r of out.returns||[]){
+    const u=byId(user.returns,r.id);if(!u)continue;
+    carry(r,u,['gain'],['mute']);
+    carryInserts(r.inserts,u.inserts);
+  }
+  if(isObj(user.master)&&isObj(out.master)){
+    carry(out.master,user.master,['gain'],[]);
+    carryInserts(out.master.inserts,user.master.inserts);
+  }
+  return out;
+}
+return {mergeMixer};
+})();
+
 /* ---------- app/player.js ---------- */
-const __mod22=(function(){
-const {$,S,chords,run,progression,bassNote}=__mod17;
-const {setActive,showNotes}=__mod18;
+const __mod25=(function(){
+const {$,S,chords,run,progression,bassNote,styleMod,styleParams}=__mod17;
+const {setActive,showNotes}=__mod19;
 const {registry}=__mod16;
-const {createEngine}=__mod21;
-const {faderToGain}=__mod6;
+const {createEngine}=__mod23;
+const {faderToGain,gainToFader}=__mod6;
+const {mergeMixer}=__mod24;
 /* ================= Wiedergabe ================= */
 /* Verbindet die Bedienung mit der Engine. Baut aus der aktuellen Folge und den Einstellungen den Song,
    startet und stoppt, spielt einen Akkord zum Anhören an und zeigt, welcher Akkord gerade klingt.
@@ -1801,11 +2121,12 @@ const {faderToGain}=__mod6;
 
 
 
+
 const engine=createEngine(registry);
 engine.on('warning',msg=>{$('hint').textContent=msg;});
 engine.on('ended',()=>{if(run.playing)stop();});
 
-// Welcher Lautstärkeregler zu welchem Kanal gehört.
+// Die drei Lautstärken aus blueseven.v1 und ihre Kanäle. Sie werden weiter mitgeschrieben (F-P4).
 const VOLUMES=[['rhodes','volR'],['bass','volB'],['drums','volD']];
 
 function iosUnmute(){
@@ -1831,21 +2152,55 @@ function initAudio(){
   }
 }
 
-// Der Song zur aktuellen Folge: Stil Jazzy Beats mit Spielweise, Tempo und Swing aus den Einstellungen,
-// die Kanalpegel aus den Lautstärkereglern.
-function buildSong(){
+// Der Song, wie ihn der gewählte Stil aus der aktuellen Folge erzeugt, mit den Standardwerten des Stils im Mixer.
+function freshSong(){
   const p=progression();
-  if(!p)return null;
-  const song=registry.get('styles','jazzy-beats').generate(p,{feel:S.feel},{bpm:S.bpm,swing:S.swing,rnd:Math.random});
-  for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)ch.gain=faderToGain(S[key]);}
+  return p?styleMod().generate(p,styleParams(),{bpm:S.bpm,swing:S.swing,rnd:Math.random}):null;
+}
+// Der Song zur aktuellen Folge mit den Mixer-Einstellungen des Nutzers (F-P9). Hat der Nutzer noch nichts
+// verstellt, gelten die drei Lautstärken aus blueseven.v1.
+function buildSong(){
+  const song=freshSong();
+  if(!song)return null;
+  if(S.mix)song.mixer=mergeMixer(song.mixer,S.mix);
+  else for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)ch.gain=faderToGain(S[key]);}
   return song;
 }
 // Gibt der Engine den Song zur aktuellen Folge. Im Lauf gilt er ab dem nächsten Takt.
 function refresh(){
   try{const song=buildSong();if(song)engine.load(song);}
-  catch(e){$('hint').textContent=e.message;console.error(e);}
+  catch(e){
+    // Ein unbrauchbarer gespeicherter Mixer darf die App nicht blockieren: einmal ohne ihn versuchen.
+    if(S.mix){delete S.mix;refresh();return;}
+    $('hint').textContent=e.message;console.error(e);
+  }
 }
-function setVolumes(){for(const [id,key] of VOLUMES)engine.setParam(`channel/${id}/gain`,faderToGain(S[key]));}
+// Hält S.mix und die drei alten Lautstärken auf dem Stand des Songs in der Engine (F-P8, F-P4).
+function syncMix(){
+  const song=engine.song();if(!song)return;
+  S.mix=song.mixer;
+  for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)S[key]=Math.round(gainToFader(ch.gain));}
+}
+// Setzt einen Mixer- oder Effektwert über seine Adresse. Er wirkt sofort und gehört ab dann zum Song.
+function setMix(address,value){
+  const ok=engine.setParam(address,value);
+  if(ok)syncMix();
+  return ok;
+}
+// Stellt die Standardwerte des Stils wieder her (F-P13). path: channel/<id>, return/<id>, master
+// oder einer davon mit /insert/<id> für einen einzelnen Effekt.
+function resetMix(path){
+  const def=freshSong();if(!def)return;
+  if(!S.mix)syncMix();
+  const [kind,a,b,c]=path.split('/'),find=(l,id)=>(l||[]).findIndex(x=>x.id===id);
+  const owner=mx=>kind==='master'?mx.master:mx[kind==='channel'?'channels':'returns'][find(mx[kind==='channel'?'channels':'returns'],a)];
+  const mine=owner(S.mix),std=owner(def.mixer),fx=kind==='master'?(a==='insert'?b:null):(b==='insert'?c:null);
+  if(!mine||!std)return;
+  if(fx){const i=find(mine.inserts,fx),j=find(std.inserts,fx);if(i>=0&&j>=0)mine.inserts[i]=std.inserts[j];}
+  else{for(const k in mine)delete mine[k];Object.assign(mine,std);}
+  refresh();syncMix();
+}
+const currentSong=()=>engine.song();
 
 // Nummer des Akkords, der bei beat im Song klingt, oder -1.
 function chordAt(song,beat){
@@ -1883,15 +2238,19 @@ function audition(i){
   ]);
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
-return {start,stop,audition,refresh,setVolumes,chordAt};
+return {start,stop,audition,refresh,setMix,resetMix,currentSong,chordAt};
 })();
 
 /* ---------- app/main.js ---------- */
-const __mod23=(function(){
-const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist}=__mod17;
-const {buildKeys,render,renderFavs}=__mod18;
-const {start,stop,audition,refresh,setVolumes}=__mod22;
+const __mod26=(function(){
+const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist,styleMod,setStyleParam}=__mod17;
+const {buildKeys,render,renderFavs,renderModules}=__mod19;
+const {renderMixer,bindMixer}=__mod20;
+const {readControl}=__mod18;
+const {start,stop,audition,refresh,setMix,resetMix,currentSong}=__mod25;
 /* ================= Bedienung ================= */
+
+
 
 
 
@@ -1930,19 +2289,37 @@ function bind(){
     pushHist();S.n=+b.dataset.v;S.loop=S.loop.slice(0,S.n);S.locks=Array.from({length:S.n},(_,i)=>!!S.locks[i]&&!!S.loop[i]);newLoop();});
   $('segMode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.v===S.mode)return;
     pushHist();S.mode=b.dataset.v;S.loop=[];S.locks=Array(S.n).fill(false);newLoop();});
-  $('segFeel').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.feel=b.dataset.v;refresh();render();save();});
+  // Stilparameter: Die Regler kommen aus der Parameterbeschreibung des Stils. Sie gelten ab dem nächsten Takt.
+  const styleControl=e=>{
+    const t=e.target.closest('[data-style-param]'),b=e.target.closest('button');
+    if(!t||e.type==='click'&&!b)return;
+    const p=styleMod().params.find(x=>x.id===t.dataset.styleParam);
+    setStyleParam(p.id,readControl(p,e.type==='click'?b:t));refresh();save();
+  };
+  $('styleParams').addEventListener('click',styleControl);
+  $('styleParams').addEventListener('input',styleControl);
+  // Ein anderer Stil ist ein neuer Song: Er beginnt mit den Standardwerten des Stils im Mixer (F-P10).
+  $('selStyle').addEventListener('change',e=>{S.style=e.target.value;delete S.mix;renderModules();refresh();renderMixer(currentSong());render();save();});
+  // Ein anderer Akkord-Generator würfelt eine neue Folge. Zurück gilt nur innerhalb eines Generators.
+  $('selChords').addEventListener('change',e=>{S.chordGen=e.target.value;hist.length=0;recent.length=0;S.loop=[];S.locks=Array(S.n).fill(false);newLoop();});
+  bindMixer({
+    set(address,value){setMix(address,value);save();},
+    song:currentSong,
+    reset(path){resetMix(path);renderMixer(currentSong());save();}
+  });
   $('segNine').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.nine=+b.dataset.v;revoice();refresh();render();save();});
   $('keys12').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.key=+b.dataset.v;revoice();refresh();render();save();});
-  // Tempo und Swing gelten ab dem nächsten Takt, die Lautstärken sofort. Würze wirkt erst bei der nächsten Folge.
-  for(const id of ['spice','bpm','swing','volR','volB','volD'])$(id).addEventListener('input',e=>{
+  // Tempo und Swing gelten ab dem nächsten Takt. Würze wirkt erst bei der nächsten Folge.
+  for(const id of ['spice','bpm','swing'])$(id).addEventListener('input',e=>{
     S[id]=+e.target.value;
-    if(id==='bpm'||id==='swing')refresh();else if(id!=='spice')setVolumes();
+    if(id!=='spice')refresh();
     render();save();
   });
 }
 function boot(d){
-  load(d);buildKeys();bind();
+  load(d);buildKeys();renderModules();bind();
   if(S.loop.length){revoice();refresh();render();}else newLoop();
+  renderMixer(currentSong());
 }
 if(window.claude&&window.claude.hot){
   window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({S,favs}));
