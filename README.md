@@ -1,6 +1,6 @@
 # Blue Seven
 
-Kleine Loop-DAW für jazzige Akkordfolgen. Eine einzige HTML-Datei, kein Build, keine Abhängigkeiten, mobile-first.
+Kleine Loop-DAW für jazzige Akkordfolgen. Am Ende eine einzige HTML-Datei ohne Abhängigkeiten, mobile-first.
 
 ## Was sie kann
 
@@ -20,4 +20,19 @@ Mit GitHub Pages (Settings → Pages → Branch `main`) läuft sie direkt unter 
 
 ## Aufbau
 
-Alles steht in `index.html`: oben die Harmonielogik (Akkordpool, `generate`, `voiceLoop`), darunter Oberfläche, Klangerzeugung und der Takt-Scheduler.
+Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
+
+| Datei | Inhalt |
+|---|---|
+| `src/index.html` | Markup mit `/*@include …*/`-Zeilen für Styles und Skripte |
+| `src/styles.css` | Gestaltung |
+| `src/harmony.js` | Akkordpool, `generate`, `voiceLoop` (ohne DOM, in Node testbar) |
+| `src/state.js` | Zustand `S`, Speichern in `localStorage` |
+| `src/ui.js` | Kacheln, Klaviatur, Regler |
+| `src/audio.js` | Rhodes, Bass, Drums (Web Audio) |
+| `src/sequencer.js` | Takt-Scheduler, Start/Stopp |
+| `src/main.js` | Event-Handler und Start |
+
+`node build.mjs` (oder `npm run build`) setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
+
+`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert) und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
