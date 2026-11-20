@@ -1,5 +1,5 @@
 /* ================= Zustand ================= */
-import {NOTE_FLAT,NOTE_SHARP,POOL,byId,useSharps,voiceLoop} from './harmony.js';
+import {NOTE_FLAT,NOTE_SHARP,POOL,byId,useSharps,voiceLoop} from '../harmony.js';
 
 const $=id=>document.getElementById(id);
 const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR:80,volB:60,volD:45,loop:[],locks:[]};

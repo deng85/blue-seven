@@ -1,5 +1,5 @@
 /* ================= Klang ================= */
-import {$,S} from './state.js';
+import {$,S} from './app/state.js';
 
 let ctx,gate,rBus,bBus,dBus,noiseBuf,live=[],killTimer=0;
 const vol=v=>Math.pow(v/100,1.6);
