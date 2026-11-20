@@ -49,6 +49,7 @@ function freshSong(){
 // Der Song zur aktuellen Folge mit den Mixer-Einstellungen des Nutzers (F-P9). Hat der Nutzer noch nichts
 // verstellt, gelten die drei Lautstärken aus blueseven.v1.
 function buildSong(){
+  if(run.fixed)return run.fixed.song;
   const song=freshSong();
   if(!song)return null;
   if(S.mix)song.mixer=mergeMixer(song.mixer,S.mix);
@@ -57,8 +58,10 @@ function buildSong(){
 }
 // Gibt der Engine den Song zur aktuellen Folge. Im Lauf gilt er ab dem nächsten Takt.
 function refresh(){
-  try{const song=buildSong();if(song){engine.load(song,{overrides:S.ov||[]});renderSong(song);}}
+  try{const song=buildSong();if(song){engine.load(song,{overrides:run.fixed?run.fixed.ov:S.ov||[]});renderSong(song);}}
   catch(e){
+    // Ein geladener Song, den die Engine nicht nimmt, wird geschlossen. Es gilt wieder der Generator.
+    if(run.fixed){run.fixed=null;refresh();$('hint').textContent=e.message;return;}
     // Ein unbrauchbarer gespeicherter Mixer darf die App nicht blockieren: einmal ohne ihn versuchen.
     if(S.mix){delete S.mix;delete S.ov;refresh();return;}
     $('hint').textContent=e.message;console.error(e);
@@ -67,6 +70,7 @@ function refresh(){
 // Hält S.mix und die drei alten Lautstärken auf dem Stand des Songs in der Engine (F-P8, F-P4).
 function syncMix(){
   const song=engine.song();if(!song)return;
+  if(run.fixed){run.fixed.song=song;run.fixed.ov=engine.overrides();return;}
   S.mix=song.mixer;S.ov=engine.overrides();
   for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)S[key]=Math.round(gainToFader(ch.gain));}
 }
@@ -79,19 +83,38 @@ function setMix(address,value){
 // Stellt die Standardwerte des Stils wieder her (F-P13). path: channel/<id>, return/<id>, master
 // oder einer davon mit /insert/<id> für einen einzelnen Effekt.
 function resetMix(path){
-  const def=freshSong();if(!def)return;
-  if(!S.mix)syncMix();
+  const def=run.fixed?run.fixed.orig:freshSong();if(!def)return;
+  if(!run.fixed&&!S.mix)syncMix();
+  const mixer=run.fixed?run.fixed.song.mixer:S.mix,keep=a=>a!==path&&!a.startsWith(path+'/');
   const [kind,a,b,c]=path.split('/'),find=(l,id)=>(l||[]).findIndex(x=>x.id===id);
   const owner=mx=>kind==='master'?mx.master:mx[kind==='channel'?'channels':'returns'][find(mx[kind==='channel'?'channels':'returns'],a)];
-  const mine=owner(S.mix),std=owner(def.mixer),fx=kind==='master'?(a==='insert'?b:null):(b==='insert'?c:null);
+  const mine=owner(mixer),std=owner(def.mixer),fx=kind==='master'?(a==='insert'?b:null):(b==='insert'?c:null);
   if(!mine||!std)return;
   if(fx){const i=find(mine.inserts,fx),j=find(std.inserts,fx);if(i>=0&&j>=0)mine.inserts[i]=std.inserts[j];}
   else{for(const k in mine)delete mine[k];Object.assign(mine,std);}
   // Zurückgesetzte Werte folgen wieder der Automation.
-  S.ov=(S.ov||[]).filter(a=>a!==path&&!a.startsWith(path+'/'));
+  if(run.fixed)run.fixed.ov=run.fixed.ov.filter(keep);else S.ov=(S.ov||[]).filter(keep);
   refresh();syncMix();
 }
 const currentSong=()=>engine.song();
+// Tempo oder Swing setzen (id: bpm oder swing). Gilt ab dem nächsten Takt, beim geladenen Song für diesen.
+function setTempo(id,value){
+  if(run.fixed)run.fixed.song.tempo[id]=value;else S[id]=value;
+  refresh();
+}
+// Spielt ab jetzt einen fertigen Song statt des Generators (F-P11): Er bringt seinen eigenen Mixer mit.
+// ov: Adressen, die Vorrang vor der Automation haben. Liefert false, wenn die Engine den Song nicht nimmt.
+function openSong(song,ov){
+  if(run.playing)stop();
+  run.fixed={song,ov:ov||[],orig:JSON.parse(JSON.stringify(song))};
+  refresh();
+  return !!run.fixed;
+}
+// Zurück zum Generator mit den Einstellungen, die vor dem Laden galten.
+function closeSong(){
+  if(run.playing)stop();
+  run.fixed=null;refresh();
+}
 // Springt an eine Stelle im Song. Läuft nichts, startet die Wiedergabe dort.
 function jump(beat){if(run.playing)engine.seek(beat);else start(beat);}
 
@@ -127,7 +150,7 @@ function stop(){
 // Spielt Akkord i an: die Töne leicht gebrochen auf dem Rhodes, dazu den Basston.
 function audition(i){
   if(!initAudio())return;
-  const c=chords[i];if(!c)return;
+  const c=chords[i];if(!c||!c.voicing)return;
   engine.audition([
     {track:'rhodes',notes:c.voicing.map((m,k)=>({p:m,v:.7,s:1.6,o:k*.02}))},
     {track:'bass',notes:[{p:bassNote(c),v:.8,s:1.4,o:0}]}
@@ -135,4 +158,4 @@ function audition(i){
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
 
-export {start,stop,audition,refresh,setMix,resetMix,currentSong,jump,chordAt};
+export {start,stop,audition,refresh,setMix,resetMix,setTempo,openSong,closeSong,currentSong,jump,chordAt};

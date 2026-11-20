@@ -18,6 +18,11 @@
     <div id="status" aria-live="polite"></div>
   </header>
 
+  <div class="loaded" id="loaded" hidden>
+    <div><span>Geladener Song</span><b id="loadedName"></b></div>
+    <button class="mini" id="closeSong">Schließen</button>
+  </div>
+
   <section aria-label="Akkordfolge">
     <div class="tiles" id="tiles"></div>
     <svg id="keys" role="img" aria-label="Klaviatur mit den Tönen des aktuellen Akkords"></svg>
@@ -29,7 +34,7 @@
     <div id="songBody"></div>
   </section>
 
-  <section>
+  <section class="gen-only">
     <h2>Folge</h2>
     <div class="row"><div class="lab"><label for="selChords">Akkord-Generator</label></div><select id="selChords"></select></div>
     <div class="two">
@@ -50,9 +55,11 @@
 
   <section>
     <h2>Groove</h2>
-    <div class="row"><div class="lab"><label for="selStyle">Stil</label></div><select id="selStyle"></select></div>
-    <div id="styleParams"></div>
-    <button class="mini wide" id="rebuild" hidden>Song neu bauen</button>
+    <div class="gen-only stack">
+      <div class="row"><div class="lab"><label for="selStyle">Stil</label></div><select id="selStyle"></select></div>
+      <div id="styleParams"></div>
+      <button class="mini wide" id="rebuild" hidden>Song neu bauen</button>
+    </div>
     <div class="two">
       <div class="row"><div class="lab"><label for="bpm">Tempo</label><output id="bpmOut"></output></div><input type="range" id="bpm" min="56" max="132" step="1"></div>
       <div class="row"><div class="lab"><label for="swing">Swing</label><output id="swingOut"></output></div><input type="range" id="swing" min="0" max="100" step="5"></div>
@@ -66,6 +73,25 @@
   </section>
 
   <section>
+    <h2>Songs</h2>
+    <div class="row"><div class="lab"><label for="songName">Name</label></div>
+      <div class="saveRow"><input type="text" id="songName" maxlength="60" placeholder="Leer lassen für den Titel des Songs" autocomplete="off"><button class="mini" id="saveSong">Speichern</button></div></div>
+    <div class="favs" id="songList"></div>
+    <div class="three">
+      <button class="mini" id="exportFile">Als Datei sichern</button>
+      <button class="mini" id="copySong">Kopieren</button>
+      <button class="mini" id="importFile">Datei laden</button>
+    </div>
+    <input type="file" id="songFile" accept=".json,application/json,text/plain" hidden>
+    <details id="pasteBox">
+      <summary>Song als Text einfügen</summary>
+      <textarea id="songText" rows="5" spellcheck="false" aria-label="Song als JSON-Text"></textarea>
+      <button class="mini wide" id="loadText">Text laden</button>
+    </details>
+    <p class="hint" id="songMsg" aria-live="polite">Speichern legt den aktuellen Song mit Mixer und Effekten in diesem Browser ab. Als Datei oder Text lässt er sich weitergeben.</p>
+  </section>
+
+  <section class="gen-only">
     <h2>Gemerkte Folgen</h2>
     <div class="favs" id="favs"></div>
     <p class="hint">Kein Ton? Medienlautstärke hochdrehen, auf dem iPhone auch den Stummschalter prüfen.</p>
