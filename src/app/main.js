@@ -3,7 +3,8 @@ import {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setP
 import {buildKeys,render,renderFavs,renderModules} from './ui.js';
 import {renderMixer,bindMixer} from './ui-mixer.js';
 import {readControl} from './ui-params.js';
-import {start,stop,audition,refresh,setMix,resetMix,currentSong} from './player.js';
+import {randomSeed} from '../core/rng.js';
+import {start,stop,audition,refresh,setMix,resetMix,currentSong,jump} from './player.js';
 
 function newLoop(){
   const p=chordGen().generate(genParams(),{key:S.key,mode:S.mode,rnd:Math.random,previous:fromIds(S.loop,S.key,S.mode),locked:S.locks,avoid:recent});
@@ -49,7 +50,15 @@ function bind(){
   $('styleParams').addEventListener('click',styleControl);
   $('styleParams').addEventListener('input',styleControl);
   // Ein anderer Stil ist ein neuer Song: Er beginnt mit den Standardwerten des Stils im Mixer (F-P10).
-  $('selStyle').addEventListener('change',e=>{S.style=e.target.value;delete S.mix;renderModules();refresh();renderMixer(currentSong());render();save();});
+  $('selStyle').addEventListener('change',e=>{
+    S.style=e.target.value;delete S.mix;delete S.ov;
+    const tp=styleMod().tempo;if(tp){S.bpm=tp.default;S.swing=tp.swing;}
+    renderModules();refresh();renderMixer(currentSong());render();save();
+  });
+  // Gleiche Akkordfolge, neu gewürfelter Stil. Es bleibt derselbe Song, der Mixer bleibt (F-U9).
+  $('rebuild').addEventListener('click',()=>{S.seed=randomSeed();refresh();save();});
+  // Antippen eines Abschnitts springt dorthin.
+  $('songBody').addEventListener('click',e=>{const b=e.target.closest('button[data-beat]');if(b)jump(+b.dataset.beat);});
   // Ein anderer Akkord-Generator würfelt eine neue Folge. Zurück gilt nur innerhalb eines Generators.
   $('selChords').addEventListener('change',e=>{S.chordGen=e.target.value;hist.length=0;recent.length=0;S.loop=[];S.locks=Array(S.n).fill(false);newLoop();});
   bindMixer({

@@ -4,6 +4,8 @@
    Die Engine selbst kennt die Oberfläche nicht. */
 import {$,S,chords,run,progression,bassNote,styleMod,styleParams} from './state.js';
 import {setActive,showNotes} from './ui.js';
+import {showPosition,renderSong} from './ui-song.js';
+import {createRng} from '../core/rng.js';
 import {registry} from './modules.js';
 import {createEngine} from '../engine/engine.js';
 import {faderToGain,gainToFader} from '../core/gain.js';
@@ -42,7 +44,7 @@ function initAudio(){
 // Der Song, wie ihn der gewählte Stil aus der aktuellen Folge erzeugt, mit den Standardwerten des Stils im Mixer.
 function freshSong(){
   const p=progression();
-  return p?styleMod().generate(p,styleParams(),{bpm:S.bpm,swing:S.swing,rnd:Math.random}):null;
+  return p?styleMod().generate(p,styleParams(),{bpm:S.bpm,swing:S.swing,rnd:createRng(S.seed),seed:S.seed}):null;
 }
 // Der Song zur aktuellen Folge mit den Mixer-Einstellungen des Nutzers (F-P9). Hat der Nutzer noch nichts
 // verstellt, gelten die drei Lautstärken aus blueseven.v1.
@@ -55,17 +57,17 @@ function buildSong(){
 }
 // Gibt der Engine den Song zur aktuellen Folge. Im Lauf gilt er ab dem nächsten Takt.
 function refresh(){
-  try{const song=buildSong();if(song)engine.load(song);}
+  try{const song=buildSong();if(song){engine.load(song,{overrides:S.ov||[]});renderSong(song);}}
   catch(e){
     // Ein unbrauchbarer gespeicherter Mixer darf die App nicht blockieren: einmal ohne ihn versuchen.
-    if(S.mix){delete S.mix;refresh();return;}
+    if(S.mix){delete S.mix;delete S.ov;refresh();return;}
     $('hint').textContent=e.message;console.error(e);
   }
 }
 // Hält S.mix und die drei alten Lautstärken auf dem Stand des Songs in der Engine (F-P8, F-P4).
 function syncMix(){
   const song=engine.song();if(!song)return;
-  S.mix=song.mixer;
+  S.mix=song.mixer;S.ov=engine.overrides();
   for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)S[key]=Math.round(gainToFader(ch.gain));}
 }
 // Setzt einen Mixer- oder Effektwert über seine Adresse. Er wirkt sofort und gehört ab dann zum Song.
@@ -85,15 +87,21 @@ function resetMix(path){
   if(!mine||!std)return;
   if(fx){const i=find(mine.inserts,fx),j=find(std.inserts,fx);if(i>=0&&j>=0)mine.inserts[i]=std.inserts[j];}
   else{for(const k in mine)delete mine[k];Object.assign(mine,std);}
+  // Zurückgesetzte Werte folgen wieder der Automation.
+  S.ov=(S.ov||[]).filter(a=>a!==path&&!a.startsWith(path+'/'));
   refresh();syncMix();
 }
 const currentSong=()=>engine.song();
+// Springt an eine Stelle im Song. Läuft nichts, startet die Wiedergabe dort.
+function jump(beat){if(run.playing)engine.seek(beat);else start(beat);}
 
-// Nummer des Akkords, der bei beat im Song klingt, oder -1.
+// Nummer des Akkords, der bei beat im Song klingt, oder -1. Die Akkordfolge aus song.meta.chords läuft als
+// Schleife und beginnt in jedem Abschnitt von vorn.
 function chordAt(song,beat){
   const list=song.meta&&song.meta.chords&&song.meta.chords.chords;
   if(!list||!list.length||!(song.length>0))return -1;
-  const b=(beat%song.length+song.length)%song.length;
+  const pos=(beat%song.length+song.length)%song.length,sec=(song.sections||[]).find(s=>pos>=s.start&&pos<s.start+s.length);
+  const loop=list.reduce((s,c)=>s+c.duration,0),b=(pos-(sec?sec.start:0))%loop;
   let at=0;
   for(let i=0;i<list.length;i++){at+=list[i].duration;if(b<at)return i;}
   return list.length-1;
@@ -102,17 +110,18 @@ function frame(){
   if(!run.playing)return;
   const pos=engine.position(),cur=pos?chordAt(pos.song,pos.beat):-1;
   if(cur!==run.active)setActive(cur);
+  showPosition(pos?pos.beat:-1);
   requestAnimationFrame(frame);
 }
-function start(){
+function start(from){
   if(!initAudio())return;
-  if(!engine.play())return;
+  if(!engine.play({from:from||0}))return;
   run.playing=true;requestAnimationFrame(frame);
   $('playTxt').textContent='Stop';$('playIco').innerHTML='<path d="M6 5h12v14H6z"/>';
 }
 function stop(){
   run.playing=false;engine.stop();
-  setActive(-1);
+  setActive(-1);showPosition(-1);
   $('playTxt').textContent='Play';$('playIco').innerHTML='<path d="M7 4v16l13-8z"/>';
 }
 // Spielt Akkord i an: die Töne leicht gebrochen auf dem Rhodes, dazu den Basston.
@@ -126,4 +135,4 @@ function audition(i){
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
 
-export {start,stop,audition,refresh,setMix,resetMix,currentSong,chordAt};
+export {start,stop,audition,refresh,setMix,resetMix,currentSong,jump,chordAt};

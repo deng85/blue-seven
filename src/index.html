@@ -24,6 +24,11 @@
     <p class="hint" id="hint">Akkord antippen zum Anhören. Mit „Halten“ bleibt er bei der nächsten Folge stehen.</p>
   </section>
 
+  <section id="song" hidden>
+    <h2>Song</h2>
+    <div id="songBody"></div>
+  </section>
+
   <section>
     <h2>Folge</h2>
     <div class="row"><div class="lab"><label for="selChords">Akkord-Generator</label></div><select id="selChords"></select></div>
@@ -47,6 +52,7 @@
     <h2>Groove</h2>
     <div class="row"><div class="lab"><label for="selStyle">Stil</label></div><select id="selStyle"></select></div>
     <div id="styleParams"></div>
+    <button class="mini wide" id="rebuild" hidden>Song neu bauen</button>
     <div class="two">
       <div class="row"><div class="lab"><label for="bpm">Tempo</label><output id="bpmOut"></output></div><input type="range" id="bpm" min="56" max="132" step="1"></div>
       <div class="row"><div class="lab"><label for="swing">Swing</label><output id="swingOut"></output></div><input type="range" id="swing" min="0" max="100" step="5"></div>
