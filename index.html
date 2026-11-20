@@ -351,7 +351,207 @@ function checkChords(p){
   });
   return errors;
 }
-return {CHORDS_FORMAT,CHORDS_VERSION,checkChords};
+
+/* ---------- Song ---------- */
+/* Das Song-Format (Abschnitt 9 im Pflichtenheft). Zeiten in Vierteln, Pegel linear. Kurzform:
+
+     {format:'blueseven.song', version:1, meta:{…},
+      tempo:{bpm, swing, beatsPerBar}, length, loop,
+      sections:[{id, name, start, length}],
+      patterns:{<id>:{length, notes:[{t, d, p, v, o}]}},
+      tracks:[{id, name, channel, instrument:{type, params}, clips:[{pattern, start, length, transpose}]}],
+      mixer:{channels:[…], returns:[…], master:{…}},
+      automation:[{target, points:[{t, v, curve}]}]}                                                      */
+
+const SONG_FORMAT='blueseven.song',SONG_VERSION=1;
+const CURVES=['step','lin','exp'];
+const isNum=v=>typeof v==='number'&&Number.isFinite(v);
+const isId=v=>typeof v==='string'&&/^[A-Za-z0-9][\w-]*$/.test(v);
+
+// Prüft, ob eine Parameteradresse (Abschnitt 9.4) auf etwas zeigt, das es im Song gibt.
+// Liefert null oder eine Fehlermeldung. Ob der Parameter selbst existiert, weiß erst das Modul.
+function checkAddress(song,address){
+  if(typeof address!=='string')return 'Die Adresse ist kein Text.';
+  const a=address.split('/'),mx=song&&song.mixer||{};
+  const find=(list,id)=>Array.isArray(list)?list.find(x=>x&&x.id===id):undefined;
+  const insert=(owner,id,rest,label)=>{
+    if(!find(owner.inserts,id))return `${label} hat keinen Effekt „${id}“.`;
+    return rest.length===1&&rest[0]?null:`Nach dem Effekt „${id}“ muss genau ein Parametername stehen.`;
+  };
+  const bad=`Die Adresse „${address}“ gibt es nicht.`;
+  if(a[0]==='tempo')return a.length===2&&(a[1]==='bpm'||a[1]==='swing')?null:bad;
+  if(a[0]==='master'){
+    const m=mx.master||{};
+    if(a.length===2&&a[1]==='gain')return null;
+    if(a[1]==='insert'&&a.length>=3)return insert(m,a[2],a.slice(3),'Die Summe');
+    return bad;
+  }
+  if(a[0]==='channel'){
+    const c=find(mx.channels,a[1]);if(!c)return `Es gibt keinen Kanal „${a[1]}“.`;
+    if(a.length===3&&['gain','pan','mute','solo'].includes(a[2]))return null;
+    if(a[2]==='send'&&a.length===4)return (c.sends||[]).some(x=>x&&x.to===a[3])?null:`Kanal „${a[1]}“ hat keinen Send auf „${a[3]}“.`;
+    if(a[2]==='insert'&&a.length>=4)return insert(c,a[3],a.slice(4),`Kanal „${a[1]}“`);
+    return bad;
+  }
+  if(a[0]==='return'){
+    const r=find(mx.returns,a[1]);if(!r)return `Es gibt keine Effektspur „${a[1]}“.`;
+    if(a.length===3&&(a[2]==='gain'||a[2]==='mute'))return null;
+    if(a[2]==='insert'&&a.length>=4)return insert(r,a[3],a.slice(4),`Effektspur „${a[1]}“`);
+    return bad;
+  }
+  if(a[0]==='track'){
+    if(!find(song&&song.tracks,a[1]))return `Es gibt keine Spur „${a[1]}“.`;
+    return a.length===4&&a[2]==='instrument'&&a[3]?null:bad;
+  }
+  return bad;
+}
+
+// Prüft einen Song. Liefert eine Liste verständlicher Fehler, leer heißt in Ordnung.
+// Geprüft werden Aufbau, Wertebereiche und Verweise. Ob es Instrument- und Effekttypen gibt, prüft erst die Engine.
+function checkSong(song){
+  if(!isObj(song))return ['Der Song ist kein Objekt.'];
+  const errors=[],err=m=>errors.push(m);
+  if(song.format!==SONG_FORMAT)err(`Das Feld format muss „${SONG_FORMAT}“ sein.`);
+  if(!isInt(song.version)||song.version<1)err('Das Feld version muss eine ganze Zahl ab 1 sein.');
+  else if(song.version>SONG_VERSION)err(`Der Song hat Version ${song.version}, diese App versteht nur bis Version ${SONG_VERSION}.`);
+  if(song.meta!==undefined&&!isObj(song.meta))err('Das Feld meta muss ein Objekt sein.');
+
+  const t=song.tempo;
+  if(!isObj(t))err('Das Feld tempo fehlt.');
+  else{
+    if(!isNum(t.bpm)||t.bpm<20||t.bpm>400)err('tempo.bpm muss zwischen 20 und 400 liegen.');
+    if(!isNum(t.swing)||t.swing<0||t.swing>100)err('tempo.swing muss zwischen 0 und 100 liegen.');
+    if(!isInt(t.beatsPerBar)||t.beatsPerBar<1)err('tempo.beatsPerBar muss eine ganze Zahl ab 1 sein.');
+  }
+  const len=song.length,lenOk=isNum(len)&&len>0;
+  if(!lenOk)err('Das Feld length muss eine Länge in Vierteln größer als 0 sein.');
+  if(typeof song.loop!=='boolean')err('Das Feld loop muss true oder false sein.');
+
+  // Abschnitte: lückenlos, ohne Überlappung, vom Anfang bis zum Ende.
+  if(!Array.isArray(song.sections)||!song.sections.length)err('Das Feld sections muss eine Liste mit mindestens einem Abschnitt sein.');
+  else{
+    let at=0;const ids=[];
+    song.sections.forEach((x,i)=>{
+      const where=`Abschnitt ${i+1}`;
+      if(!isObj(x)){err(`${where} ist kein Objekt.`);return;}
+      if(!isId(x.id))err(`${where} braucht eine id.`);else if(ids.includes(x.id))err(`Abschnitt „${x.id}“ kommt doppelt vor.`);else ids.push(x.id);
+      if(typeof x.name!=='string'||!x.name)err(`${where} braucht einen Namen.`);
+      if(!isNum(x.start)||!isNum(x.length)||x.length<=0){err(`${where} braucht start und eine length größer als 0.`);return;}
+      if(Math.abs(x.start-at)>1e-9)err(`${where} beginnt bei ${x.start}, erwartet ist ${at}. Abschnitte müssen lückenlos aufeinander folgen.`);
+      at=x.start+x.length;
+    });
+    if(lenOk&&!errors.some(m=>m.startsWith('Abschnitt'))&&Math.abs(at-len)>1e-9)err(`Die Abschnitte enden bei ${at}, der Song aber bei ${len}.`);
+  }
+
+  // Patterns
+  const patterns=isObj(song.patterns)?song.patterns:null;
+  if(!patterns)err('Das Feld patterns muss ein Objekt sein.');
+  else for(const id in patterns){
+    const pt=patterns[id],where=`Pattern „${id}“`;
+    if(!isId(id))err(`${where}: Der Name darf nur Buchstaben, Ziffern, - und _ enthalten.`);
+    if(!isObj(pt)){err(`${where} ist kein Objekt.`);continue;}
+    if(!isNum(pt.length)||pt.length<=0)err(`${where} braucht eine length größer als 0.`);
+    if(!Array.isArray(pt.notes)){err(`${where} braucht eine Liste notes.`);continue;}
+    pt.notes.forEach((n,i)=>{
+      const w=`${where}, Note ${i+1}`;
+      if(!isObj(n)){err(`${w} ist kein Objekt.`);return;}
+      if(!isNum(n.t)||n.t<0)err(`${w}: t muss eine Zeit ab 0 sein.`);
+      else if(isNum(pt.length)&&n.t>=pt.length)err(`${w}: t=${n.t} liegt hinter dem Ende des Patterns (${pt.length}).`);
+      if(!isNum(n.d)||n.d<=0)err(`${w}: d muss eine Dauer größer als 0 sein.`);
+      if(!isMidi(n.p))err(`${w}: p muss eine MIDI-Note von 0 bis 127 sein.`);
+      if(!isNum(n.v)||n.v<0||n.v>1)err(`${w}: v muss zwischen 0 und 1 liegen.`);
+      if(n.o!==undefined&&(!isNum(n.o)||Math.abs(n.o)>1))err(`${w}: o muss ein Versatz in Sekunden zwischen -1 und 1 sein.`);
+    });
+  }
+
+  // Mixer
+  const mx=song.mixer,chIds=[],retIds=[];
+  const chain=(list,where)=>{
+    if(!Array.isArray(list)){err(`${where}: inserts muss eine Liste sein.`);return;}
+    const ids=[];
+    list.forEach((x,i)=>{
+      if(!isObj(x)){err(`${where}, Effekt ${i+1} ist kein Objekt.`);return;}
+      if(!isId(x.id))err(`${where}, Effekt ${i+1} braucht eine id.`);else if(ids.includes(x.id))err(`${where}: Effekt „${x.id}“ kommt doppelt vor.`);else ids.push(x.id);
+      if(typeof x.type!=='string'||!x.type)err(`${where}, Effekt „${x.id}“ braucht einen type.`);
+      if(x.params!==undefined&&!isObj(x.params))err(`${where}, Effekt „${x.id}“: params muss ein Objekt sein.`);
+      if(x.bypass!==undefined&&typeof x.bypass!=='boolean')err(`${where}, Effekt „${x.id}“: bypass muss true oder false sein.`);
+    });
+  };
+  const level=(x,where)=>{if(!isNum(x.gain)||x.gain<0||x.gain>4)err(`${where}: gain muss zwischen 0 und 4 liegen.`);};
+  const flag=(x,k,where)=>{if(typeof x[k]!=='boolean')err(`${where}: ${k} muss true oder false sein.`);};
+  if(!isObj(mx))err('Das Feld mixer fehlt.');
+  else{
+    if(!Array.isArray(mx.returns))err('mixer.returns muss eine Liste sein.');
+    else mx.returns.forEach((r,i)=>{
+      if(!isObj(r)||!isId(r.id)){err(`Effektspur ${i+1} braucht eine id.`);return;}
+      const where=`Effektspur „${r.id}“`;
+      if(retIds.includes(r.id))err(`${where} kommt doppelt vor.`);else retIds.push(r.id);
+      if(typeof r.name!=='string'||!r.name)err(`${where} braucht einen Namen.`);
+      level(r,where);flag(r,'mute',where);chain(r.inserts,where);
+    });
+    if(!Array.isArray(mx.channels)||!mx.channels.length)err('mixer.channels muss eine Liste mit mindestens einem Kanal sein.');
+    else mx.channels.forEach((c,i)=>{
+      if(!isObj(c)||!isId(c.id)){err(`Kanal ${i+1} braucht eine id.`);return;}
+      const where=`Kanal „${c.id}“`;
+      if(chIds.includes(c.id))err(`${where} kommt doppelt vor.`);else chIds.push(c.id);
+      if(retIds.includes(c.id))err(`${where} heißt wie eine Effektspur.`);
+      if(typeof c.name!=='string'||!c.name)err(`${where} braucht einen Namen.`);
+      level(c,where);flag(c,'mute',where);flag(c,'solo',where);
+      if(!isNum(c.pan)||c.pan<-1||c.pan>1)err(`${where}: pan muss zwischen -1 und 1 liegen.`);
+      chain(c.inserts,where);
+      if(!Array.isArray(c.sends))err(`${where}: sends muss eine Liste sein.`);
+      else c.sends.forEach(x=>{
+        if(!isObj(x)||!retIds.includes(x.to))err(`${where} hat einen Send auf die unbekannte Effektspur „${x&&x.to}“.`);
+        else if(!isNum(x.gain)||x.gain<0||x.gain>4)err(`${where}: Send auf „${x.to}“ braucht gain zwischen 0 und 4.`);
+      });
+    });
+    if(!isObj(mx.master))err('mixer.master fehlt.');
+    else{level(mx.master,'Summe');chain(mx.master.inserts,'Summe');}
+  }
+
+  // Spuren
+  if(!Array.isArray(song.tracks))err('Das Feld tracks muss eine Liste sein.');
+  else{
+    const ids=[];
+    song.tracks.forEach((tr,i)=>{
+      if(!isObj(tr)||!isId(tr.id)){err(`Spur ${i+1} braucht eine id.`);return;}
+      const where=`Spur „${tr.id}“`;
+      if(ids.includes(tr.id))err(`${where} kommt doppelt vor.`);else ids.push(tr.id);
+      if(typeof tr.name!=='string'||!tr.name)err(`${where} braucht einen Namen.`);
+      if(isObj(mx)&&!chIds.includes(tr.channel))err(`${where} spielt in den unbekannten Kanal „${tr.channel}“.`);
+      if(!isObj(tr.instrument)||typeof tr.instrument.type!=='string'||!tr.instrument.type)err(`${where} braucht ein instrument mit type.`);
+      else if(tr.instrument.params!==undefined&&!isObj(tr.instrument.params))err(`${where}: instrument.params muss ein Objekt sein.`);
+      if(!Array.isArray(tr.clips)){err(`${where} braucht eine Liste clips.`);return;}
+      tr.clips.forEach((c,j)=>{
+        const w=`${where}, Clip ${j+1}`;
+        if(!isObj(c)){err(`${w} ist kein Objekt.`);return;}
+        if(patterns&&!(typeof c.pattern==='string'&&Object.prototype.hasOwnProperty.call(patterns,c.pattern)))err(`${w} verweist auf das unbekannte Pattern „${c.pattern}“.`);
+        if(!isNum(c.start)||c.start<0||!isNum(c.length)||c.length<=0)err(`${w} braucht start ab 0 und eine length größer als 0.`);
+        else if(lenOk&&c.start+c.length>len+1e-9)err(`${w} endet bei ${c.start+c.length}, hinter dem Ende des Songs (${len}).`);
+        if(c.transpose!==undefined&&(!isInt(c.transpose)||Math.abs(c.transpose)>48))err(`${w}: transpose muss eine ganze Zahl von -48 bis 48 sein.`);
+      });
+    });
+  }
+
+  // Automation
+  if(song.automation!==undefined){
+    if(!Array.isArray(song.automation))err('Das Feld automation muss eine Liste sein.');
+    else song.automation.forEach((a,i)=>{
+      const where=`Automation ${i+1}`;
+      if(!isObj(a)){err(`${where} ist kein Objekt.`);return;}
+      const bad=checkAddress(song,a.target);if(bad)err(`${where}: ${bad}`);
+      if(!Array.isArray(a.points)||!a.points.length){err(`${where} braucht mindestens einen Stützpunkt.`);return;}
+      a.points.forEach((p,j)=>{
+        const w=`${where}, Stützpunkt ${j+1}`;
+        if(!isObj(p)||!isNum(p.t)||p.t<0||!isNum(p.v)){err(`${w} braucht t ab 0 und einen Wert v.`);return;}
+        if(j>0&&isObj(a.points[j-1])&&p.t<a.points[j-1].t)err(`${w} liegt vor dem vorherigen. Stützpunkte müssen nach Zeit sortiert sein.`);
+        if(p.curve!==undefined&&!CURVES.includes(p.curve))err(`${w}: curve muss eines von ${CURVES.join(', ')} sein.`);
+      });
+    });
+  }
+  return errors;
+}
+return {CHORDS_FORMAT,CHORDS_VERSION,checkChords,SONG_FORMAT,SONG_VERSION,checkSong,checkAddress};
 })();
 
 /* ---------- chords/jazzy.js ---------- */
@@ -508,26 +708,252 @@ const jazzy={
 return {jazzy,QUAL,SCALE,POOL,byId,generate,chordName,voiceLoop};
 })();
 
-/* ---------- app/modules.js ---------- */
+/* ---------- core/voicing.js ---------- */
 const __mod5=(function(){
+/* ================= Stimmführung für beliebige Akkordfolgen ================= */
+/* Für Stile, die eine Lage brauchen, wenn der Akkord-Generator keine mitliefert (chords[].voicing fehlt),
+   oder die bewusst eine eigene wollen. Gleiches Vorgehen wie bei Jazzy: enge Lagen um eine Mitte,
+   möglichst kleine Bewegung von Akkord zu Akkord, zwei Runden, damit auch der Rücksprung passt. */
+
+// Welche Tonklassen klingen sollen. Bei mehr als max Tönen fällt zuerst der Grundton weg (den spielt der Bass),
+// dann die Quinte, dann die höchsten Erweiterungen.
+function pickTones(chord,max){
+  let ts=[...new Set(chord.tones.map(t=>t%12))];
+  const drop=t=>{if(ts.length>max&&ts.includes(t))ts=ts.filter(x=>x!==t);};
+  drop(0);drop(7);
+  ts=ts.slice(0,max);
+  return ts.map(t=>(chord.root+t)%12);
+}
+// Alle engen Lagen dieser Tonklassen mit der tiefsten Note zwischen low und low+12.
+function closeVoicings(pcs,low){
+  const out=[];
+  for(let b=low;b<=low+12;b++){
+    if(!pcs.includes(b%12))continue;
+    const rest=pcs.filter(p=>p!==b%12).map(p=>b+((p-b%12+12)%12)).sort((x,y)=>x-y);
+    out.push([b,...rest]);
+  }
+  return out;
+}
+const mean=v=>v.reduce((a,b)=>a+b,0)/v.length;
+// Wie weit wandern die Finger von prev nach v? Bei gleicher Stimmenzahl Stimme für Stimme, sonst zum nächsten Ton.
+function distance(prev,v){
+  if(prev.length===v.length)return v.reduce((a,x,i)=>a+Math.abs(x-prev[i]),0);
+  const near=(a,b)=>a.reduce((s,x)=>s+Math.min(...b.map(y=>Math.abs(x-y))),0);
+  return (near(v,prev)+near(prev,v))/2;
+}
+
+// Liefert für jeden Akkord eine Lage als aufsteigende MIDI-Noten.
+// opts: max (höchstens so viele Töne, Standard 4), low (tiefste erlaubte Unterkante, Standard 52), center (Mitte, Standard 63).
+function voiceChords(chords,opts){
+  const o=Object.assign({max:4,low:52,center:63},opts);
+  const cands=chords.map(c=>closeVoicings(pickTones(c,o.max),o.low));
+  let prev=null,out=[];
+  for(let pass=0;pass<2;pass++){
+    out=cands.map(list=>{
+      let best=null,bc=Infinity;
+      for(const v of list){
+        let c=prev?distance(prev,v)+.4*Math.abs(mean(v)-o.center):Math.abs(mean(v)-o.center);
+        if(v.length>2&&v[v.length-1]-v[v.length-2]===1)c+=3;   // kleine Sekunde ganz oben klingt hart
+        if(c<bc){bc=c;best=v;}
+      }
+      prev=best;return best;
+    });
+  }
+  return out;
+}
+return {voiceChords};
+})();
+
+/* ---------- core/gain.js ---------- */
+const __mod6=(function(){
+/* ================= Pegel ================= */
+/* Die Regler der Oberfläche gehen von 0 bis 100. Im Song steht der lineare Pegel. Umgerechnet wird mit
+   dem Exponenten 1,6, damit der Regler sich im unteren Bereich feiner anfühlt (wie bisher in audio.js). */
+const faderToGain=v=>Math.pow(Math.min(100,Math.max(0,v))/100,1.6);
+const gainToFader=g=>100*Math.pow(Math.max(0,g),1/1.6);
+return {faderToGain,gainToFader};
+})();
+
+/* ---------- styles/jazzy-beats.js ---------- */
+const __mod7=(function(){
+const {normalize}=__mod1;
+const {checkChords,SONG_FORMAT,SONG_VERSION}=__mod3;
+const {noteName}=__mod0;
+const {voiceChords}=__mod5;
+const {faderToGain}=__mod6;
+/* ================= Stil „Jazzy Beats“ ================= */
+/* Baut aus einer beliebigen Akkordfolge einen Loop mit Rhodes, Bass und Drums, als Song-JSON.
+   Noten, Längen und Anschläge entsprechen dem ursprünglichen Takt-Ablauf (scheduleBar in sequencer.js).
+   Der Stil kennt keinen Akkord-Generator. Er liest von der Folge nur key, mode, root, tones, duration,
+   voicing und bass. */
+
+
+
+
+
+
+
+const BAR=4;   // Viertel pro Takt
+
+// Begleitmuster pro Takt: [Zeit in Vierteln, Dauer in Vierteln, Anschlag]
+const COMP=[[0,1.3,.75],[1.5,.7,.52],[2.5,1.25,.66]];
+const PAD_SPREAD=.016,COMP_SPREAD=.008;   // Sekunden zwischen den Akkordtönen, von unten nach oben
+
+// Reihenfolge der Töne beim Brechen: einmal hinauf, dann zwischen dem zweiten und dem obersten Ton hin und her.
+// Für vier Töne ergibt das 0,1,2,3,2,1,2,3 wie bisher.
+function arpOrder(count,steps){
+  const out=[];
+  for(let k=0;k<count&&out.length<steps;k++)out.push(k);
+  let k=count-1,dir=-1;
+  while(out.length<steps){
+    if(count<3){out.push(out.length%count);continue;}
+    k+=dir;if(k<1){k=2;dir=1;}else if(k>count-1){k=count-2;dir=-1;}
+    out.push(k);
+  }
+  return out;
+}
+
+// Abschnitte eines Akkords: Er wird in Takte zerlegt, der letzte Abschnitt ist gegebenenfalls kürzer.
+function segments(duration){
+  const out=[];
+  for(let s=0;s<duration-1e-9;s+=BAR)out.push([s,Math.min(BAR,duration-s)]);
+  return out;
+}
+
+const bassOf=c=>36+(c.bass===undefined?c.root:c.bass);
+
+// Rhodes in einem Abschnitt der Länge len ab Position at.
+function keys(notes,feel,at,len){
+  const out=[],top=notes.length-1,add=(t,d,p,v,o)=>{if(t<len)out.push(o?{t:at+t,d,p,v,o}:{t:at+t,d,p,v});};
+  if(feel==='pad'){
+    const d=Math.max(len-.2,len/2);   // im vollen Takt 3,8 Viertel wie bisher
+    notes.forEach((m,k)=>add(0,d,m,.6+(k===top?.1:0),k*PAD_SPREAD));
+  }else if(feel==='comp'){
+    COMP.forEach(([b,d,ve])=>notes.forEach((m,k)=>add(b,d,m,ve+(k===top?.08:0),k*COMP_SPREAD)));
+  }else{
+    arpOrder(notes.length,8).forEach((k,j)=>add(j/2,1.7,notes[k],j%2?.5:.7));
+  }
+  return out;
+}
+// Bass in einem Abschnitt: Grundton auf 1 und 2-und, eine halbe Zählzeit vor dem nächsten Abschnitt
+// ein Durchgangston einen Halbton unter dessen Basston.
+function bassLine(low,nextLow,at,len){
+  const out=[],pass=len-.5;
+  for(const [b,d,v] of [[0,2.2,.9],[2.5,.7,.7]])if(b===0||b<pass)out.push({t:at+b,d,p:low,v});
+  if(pass>0)out.push({t:at+pass,d:.4,p:nextLow-1,v:.6});
+  return out;
+}
+// Ein Takt Drums: Hi-Hat in Achteln, Kick auf 1 und 2-und, Rim auf 2 und 4 (General-MIDI-Nummern).
+const KICK=36,RIM=37,HAT=42;
+function drumBar(){
+  const out=[];
+  for(let j=0;j<8;j++)out.push({t:j/2,d:.25,p:HAT,v:j%2?.4:.7});
+  out.push({t:0,d:.25,p:KICK,v:1},{t:2.5,d:.25,p:KICK,v:.75},{t:1,d:.25,p:RIM,v:.7},{t:3,d:.25,p:RIM,v:.8});
+  return out.sort((a,b)=>a.t-b.t||a.p-b.p);
+}
+
+// Mixer wie im bisherigen Signalweg (audio.js).
+function mixer(){
+  return {
+    channels:[
+      {id:'rhodes',name:'Rhodes',gain:faderToGain(80),pan:0,mute:false,solo:false,
+        inserts:[{id:'lp',type:'filter',params:{mode:'lowpass',frequency:3600,q:.3}},
+                 {id:'trem',type:'tremolo',params:{rate:4.4,depth:.45}}],
+        sends:[{to:'hall',gain:.24}]},
+      {id:'bass',name:'Bass',gain:faderToGain(60),pan:0,mute:false,solo:false,inserts:[],sends:[]},
+      {id:'drums',name:'Drums',gain:faderToGain(45),pan:0,mute:false,solo:false,inserts:[],sends:[{to:'hall',gain:.06}]}
+    ],
+    returns:[{id:'hall',name:'Hall',gain:1,mute:false,inserts:[{id:'rev',type:'reverb',params:{seconds:1.5}}]}],
+    master:{gain:1,inserts:[{id:'comp',type:'compressor',params:{threshold:-16,ratio:4}}]}
+  };
+}
+
+const clamp=(v,lo,hi,def)=>typeof v==='number'&&Number.isFinite(v)?Math.min(hi,Math.max(lo,v)):def;
+
+const jazzyBeats={
+  id:'jazzy-beats',
+  name:'Jazzy Beats',
+  version:1,
+  params:[
+    {id:'feel',name:'Spielweise',type:'enum',default:'comp',
+      options:[{value:'pad',name:'Liegend'},{value:'comp',name:'Comping'},{value:'arp',name:'Gebrochen'}]}
+  ],
+  tempo:{default:84,min:56,max:132,swing:55},
+
+  // progression: Akkordfolge im Format blueseven.chords. ctx: bpm, swing (0 bis 100), rnd (hier nicht gebraucht).
+  generate(progression,params,ctx){
+    const errors=checkChords(progression);
+    if(errors.length)throw new Error('Jazzy Beats kann diese Akkordfolge nicht verwenden.\n  '+errors.join('\n  '));
+    const p=normalize(jazzyBeats.params,params),c=ctx||{},tp=jazzyBeats.tempo;
+    const chords=progression.chords;
+    // Lage: die vom Akkord-Generator, sonst eine eigene für die ganze Folge.
+    const voicings=chords.every(ch=>Array.isArray(ch.voicing))?chords.map(ch=>ch.voicing):voiceChords(chords);
+
+    const keyNotes=[],bassNotes=[];let at=0;
+    chords.forEach((ch,i)=>{
+      const segs=segments(ch.duration),next=chords[(i+1)%chords.length];
+      segs.forEach(([s,len],j)=>{
+        keyNotes.push(...keys(voicings[i],p.feel,at+s,len));
+        // Im letzten Abschnitt führt der Durchgangston zum nächsten Akkord, sonst zurück zum eigenen Grundton.
+        bassNotes.push(...bassLine(bassOf(ch),bassOf(j===segs.length-1?next:ch),at+s,len));
+      });
+      at+=ch.duration;
+    });
+    const length=at,key=progression.key,mode=progression.mode;
+    const byTime=(a,b)=>a.t-b.t||a.p-b.p;
+
+    return {
+      format:SONG_FORMAT,version:SONG_VERSION,
+      meta:{
+        title:`Jazzy Beats in ${noteName(key,key,mode)}-${mode==='dur'?'Dur':'Moll'}`,
+        style:{id:jazzyBeats.id,version:jazzyBeats.version,params:p},
+        chords:progression
+      },
+      tempo:{bpm:clamp(c.bpm,tp.min,tp.max,tp.default),swing:clamp(c.swing,0,100,tp.swing),beatsPerBar:BAR},
+      length,
+      loop:true,
+      sections:[{id:'loop',name:'Loop',start:0,length}],
+      patterns:{
+        keys:{length,notes:keyNotes.sort(byTime)},
+        bass:{length,notes:bassNotes.sort(byTime)},
+        drums:{length:BAR,notes:drumBar()}
+      },
+      tracks:[
+        {id:'rhodes',name:'Rhodes',channel:'rhodes',instrument:{type:'rhodes',params:{level:1.1}},clips:[{pattern:'keys',start:0,length}]},
+        {id:'bass',name:'Bass',channel:'bass',instrument:{type:'bass',params:{level:1}},clips:[{pattern:'bass',start:0,length}]},
+        {id:'drums',name:'Drums',channel:'drums',instrument:{type:'drums',params:{level:.9}},clips:[{pattern:'drums',start:0,length}]}
+      ],
+      mixer:mixer(),
+      automation:[]
+    };
+  }
+};
+return {jazzyBeats,arpOrder};
+})();
+
+/* ---------- app/modules.js ---------- */
+const __mod8=(function(){
 const {createRegistry}=__mod2;
 const {jazzy}=__mod4;
+const {jazzyBeats}=__mod7;
 /* ================= Module der App ================= */
 /* Die eine Stelle, an der steht, welche Module die App anbietet. */
 
 
 
+
 const registry=createRegistry({
-  chords:[jazzy]
+  chords:[jazzy],
+  styles:[jazzyBeats]
 });
 return {registry};
 })();
 
 /* ---------- app/state.js ---------- */
-const __mod6=(function(){
+const __mod9=(function(){
 const {MODES,noteName}=__mod0;
 const {normalize}=__mod1;
-const {registry}=__mod5;
+const {registry}=__mod8;
 /* ================= Zustand ================= */
 
 
@@ -579,8 +1005,8 @@ return {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNot
 })();
 
 /* ---------- app/ui.js ---------- */
-const __mod7=(function(){
-const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName}=__mod6;
+const __mod10=(function(){
+const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName}=__mod9;
 /* ================= Oberfläche ================= */
 
 
@@ -633,8 +1059,8 @@ return {buildKeys,showNotes,setActive,render,renderFavs};
 })();
 
 /* ---------- audio.js ---------- */
-const __mod8=(function(){
-const {$,S}=__mod6;
+const __mod11=(function(){
+const {$,S}=__mod9;
 /* ================= Klang ================= */
 
 
@@ -737,10 +1163,10 @@ return {initAudio,setVols,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancel
 })();
 
 /* ---------- sequencer.js ---------- */
-const __mod9=(function(){
-const {$,S,chords,run,bassNote}=__mod6;
-const {setActive,showNotes}=__mod7;
-const {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut}=__mod8;
+const __mod12=(function(){
+const {$,S,chords,run,bassNote}=__mod9;
+const {setActive,showNotes}=__mod10;
+const {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut}=__mod11;
 /* ================= Ablauf ================= */
 
 
@@ -796,11 +1222,11 @@ return {start,stop,audition};
 })();
 
 /* ---------- app/main.js ---------- */
-const __mod10=(function(){
-const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist}=__mod6;
-const {buildKeys,render,renderFavs}=__mod7;
-const {setVols}=__mod8;
-const {start,stop,audition}=__mod9;
+const __mod13=(function(){
+const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist}=__mod9;
+const {buildKeys,render,renderFavs}=__mod10;
+const {setVols}=__mod11;
+const {start,stop,audition}=__mod12;
 /* ================= Bedienung ================= */
 
 
