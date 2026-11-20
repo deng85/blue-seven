@@ -13,6 +13,7 @@ Kleine Loop-DAW für jazzige Akkordfolgen. Am Ende eine einzige HTML-Datei ohne 
 - Zweiter Stil „Deep House“: baut aus derselben Akkordfolge einen ganzen Song mit Intro, Aufbau, Drop, Break und Outro, mit Pumpen, Echo und Filterfahrten
 - Songübersicht mit Abschnitten zum Hinspringen und einer Balkenansicht der Spuren
 - Akkorde halten, vorherige Folge zurückholen, Folgen merken (localStorage)
+- Songs mit Mixer und Effekten im Browser speichern, als Datei oder Text weitergeben und wieder laden
 
 ## Benutzen
 
@@ -34,6 +35,7 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/app/player.js` | Baut aus Folge und Einstellungen den Song, Play/Stopp, Anhören, laufender Akkord |
 | `src/app/ui.js` | Kacheln, Klaviatur, Regler, Auswahl von Akkord-Generator und Stil |
 | `src/app/ui-song.js` | Songübersicht: Abschnitte, laufende Position, Spuren als Balken |
+| `src/app/songs.js` | Songs im Browser speichern, als Datei oder Text sichern und laden |
 | `src/app/ui-mixer.js` | Mixer: Kanäle, Effektspuren und Summe mit Effektreglern, aus dem Song erzeugt |
 | `src/app/ui-params.js` | Bedienelemente aus Parameterbeschreibungen (für Stil- und Effektparameter) |
 | `src/app/main.js` | Event-Handler und Start |
@@ -45,6 +47,7 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/core/time.js` | Viertel in Sekunden umrechnen, mit Tempo und Swing |
 | `src/core/gain.js` | Reglerwert 0 bis 100 in linearen Pegel und zurück |
 | `src/core/mixmerge.js` | Übernimmt die Mixer-Einstellungen des Nutzers in einen neu erzeugten Song |
+| `src/core/songfile.js` | Song aus Text lesen und prüfen, Formatversionen umwandeln, Sammlung gespeicherter Songs |
 | `src/core/voicing.js` | Stimmführung für Akkordfolgen ohne Lage |
 | `src/styles/jazzy-beats.js` | Stil „Jazzy Beats“: baut aus einer Akkordfolge einen Song als JSON |
 | `src/styles/deep-house.js` | Stil „Deep House“: ganzer Song mit Arrangement, eigener Akkordlage und Automation |
@@ -67,7 +70,7 @@ export {c, d};                     // nur eine Liste von Namen, am Dateiende
 
 Nicht erlaubt sind `export default`, `export const`, `import * as`, Umbenennen mit `as`, `import()` und Importe im Kreis. Exportierte Namen müssen `const` oder `function` sein und dürfen nicht neu zugewiesen werden. Bei Verstößen bricht der Build mit einer Meldung ab.
 
-`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert), die Formate, die Stile Jazzy Beats und Deep House, die Engine mit einem nachgebauten AudioContext (`test/fixtures/fake-audio.js`), den Build und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
+`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert), die Formate, die Stile Jazzy Beats und Deep House, das Sichern und Laden von Songs, die Engine mit einem nachgebauten AudioContext (`test/fixtures/fake-audio.js`), den Build und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
 
 ## Ausblick
 
