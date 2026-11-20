@@ -166,11 +166,202 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 <script>
 (function(){
 'use strict';
-/* ---------- harmony.js ---------- */
+/* ---------- core/notes.js ---------- */
 const __mod0=(function(){
-/* ================= Harmonie: Akkordpool, Bewertung, Stimmführung ================= */
+/* ================= Tonnamen ================= */
 const NOTE_FLAT=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
 const NOTE_SHARP=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const MODES=['dur','moll'];
+
+// Schreibt man diese Tonart mit Kreuzen? Sonst mit Bs.
+function useSharps(key,mode){return [7,2,9,4,11,6].includes(mode==='dur'?key:(key+3)%12);}
+// Name einer Tonklasse (0 bis 11) in der Schreibweise der Tonart.
+function noteName(pc,key,mode){return (useSharps(key,mode)?NOTE_SHARP:NOTE_FLAT)[((pc%12)+12)%12];}
+return {NOTE_FLAT,NOTE_SHARP,MODES,useSharps,noteName};
+})();
+
+/* ---------- core/params.js ---------- */
+const __mod1=(function(){
+/* ================= Parameterbeschreibung ================= */
+/* Generatoren, Instrumente und Effekte beschreiben ihre Parameter alle im selben Format:
+
+     {id:'frequency', name:'Grenzfrequenz', type:'number', min:80, max:12000, step:1, default:3600, unit:'Hz', curve:'exp'}
+     {id:'feel', name:'Spielweise', type:'enum', default:'comp', options:[{value:'pad', name:'Liegend'}, …]}
+     {id:'nine', name:'Mit None', type:'bool', default:true}
+
+   Die Oberfläche baut daraus die Regler, und hier werden Werte damit geprüft. */
+
+const TYPES=['number','enum','bool'];
+const CURVES=['lin','exp'];
+const isNum=v=>typeof v==='number'&&Number.isFinite(v);
+
+// Prüft eine Liste von Parameterbeschreibungen. Liefert eine Liste verständlicher Fehler, leer heißt in Ordnung.
+function checkSpecs(specs){
+  if(!Array.isArray(specs))return ['Die Parameterbeschreibung muss eine Liste sein.'];
+  const errors=[],seen=[];
+  specs.forEach((p,i)=>{
+    const where=p&&typeof p.id==='string'&&p.id?`Parameter „${p.id}“`:`Parameter Nr. ${i+1}`;
+    const err=msg=>errors.push(`${where}: ${msg}`);
+    if(!p||typeof p!=='object'){err('ist kein Objekt.');return;}
+    if(typeof p.id!=='string'||!/^[A-Za-z][\w-]*$/.test(p.id))err('braucht eine id aus Buchstaben, Ziffern, - und _.');
+    else if(seen.includes(p.id))err('kommt doppelt vor.');
+    else seen.push(p.id);
+    if(typeof p.name!=='string'||!p.name)err('braucht einen Namen für die Anzeige.');
+    if(!TYPES.includes(p.type)){err(`hat den unbekannten Typ „${p.type}“. Erlaubt sind ${TYPES.join(', ')}.`);return;}
+    if(p.type==='number'){
+      if(!isNum(p.min)||!isNum(p.max)||p.min>p.max)err('braucht min und max als Zahlen, mit min nicht größer als max.');
+      else if(!isNum(p.default)||p.default<p.min||p.default>p.max)err('braucht einen Standardwert zwischen min und max.');
+      if(p.step!==undefined&&(!isNum(p.step)||p.step<=0))err('hat eine ungültige Schrittweite.');
+      if(p.curve!==undefined&&!CURVES.includes(p.curve))err(`hat die unbekannte Kurve „${p.curve}“.`);
+      if(p.curve==='exp'&&isNum(p.min)&&p.min<=0)err('kann mit Kurve exp nicht bei 0 oder darunter beginnen.');
+    }else if(p.type==='enum'){
+      const ok=Array.isArray(p.options)&&p.options.length>0&&p.options.every(o=>o&&o.value!==undefined&&typeof o.name==='string'&&o.name);
+      if(!ok)err('braucht options als Liste aus {value, name}.');
+      else if(new Set(p.options.map(o=>o.value)).size!==p.options.length)err('hat eine Option doppelt.');
+      else if(!p.options.some(o=>o.value===p.default))err('braucht einen Standardwert, der unter den Optionen vorkommt.');
+    }else if(typeof p.default!=='boolean')err('braucht true oder false als Standardwert.');
+  });
+  return errors;
+}
+
+// Bringt einen einzelnen Wert in den erlaubten Bereich. Unbrauchbare Werte werden zum Standardwert.
+function normalizeValue(p,v){
+  if(p.type==='number'){
+    if(!isNum(v))return p.default;
+    if(p.step)v=p.min+Math.round((v-p.min)/p.step)*p.step;
+    v=Math.min(p.max,Math.max(p.min,v));
+    return p.step?+v.toFixed(10):v;                 // Rundungsreste wie 0.30000000000000004 vermeiden
+  }
+  if(p.type==='enum')return p.options.some(o=>o.value===v)?v:p.default;
+  return typeof v==='boolean'?v:(v===0||v===1?!!v:p.default);
+}
+// Die Standardwerte als Objekt {id: wert}.
+function defaults(specs){const out={};for(const p of specs)out[p.id]=p.default;return out;}
+// Füllt fehlende Werte mit dem Standard und begrenzt alle anderen. Unbekannte Werte fallen weg.
+function normalize(specs,values){
+  const out={},src=values&&typeof values==='object'?values:{};
+  for(const p of specs)out[p.id]=p.id in src?normalizeValue(p,src[p.id]):p.default;
+  return out;
+}
+return {checkSpecs,normalizeValue,defaults,normalize};
+})();
+
+/* ---------- core/registry.js ---------- */
+const __mod2=(function(){
+const {checkSpecs}=__mod1;
+/* ================= Registry ================= */
+/* Das Verzeichnis aller Module, die die App anbietet. Es wird an genau einer Stelle gefüllt
+   und ist der einzige Weg, auf dem die Engine an Instrumente und Effekte kommt.
+
+     const registry=createRegistry({chords:[jazzy], styles:[jazzyBeats], instruments:[rhodes], effects:[reverb]});
+     registry.get('styles','jazzy-beats');     // ein Modul oder undefined
+     registry.list('chords');                  // alle Akkord-Generatoren in der angegebenen Reihenfolge */
+
+
+
+// Die Arten von Modulen und der Name des Felds, das ein Modul eindeutig benennt.
+const KINDS={chords:'id',styles:'id',instruments:'type',effects:'type'};
+const KIND_NAMES={chords:'Akkord-Generator',styles:'Stil',instruments:'Instrument',effects:'Effekt'};
+
+function createRegistry(groups){
+  const store={};
+  for(const kind in KINDS)store[kind]=new Map();
+  for(const kind in groups||{}){
+    const key=KINDS[kind];
+    if(!key)throw new Error(`Registry: unbekannte Modulart „${kind}“. Erlaubt sind ${Object.keys(KINDS).join(', ')}.`);
+    for(const m of groups[kind]){
+      const name=m&&m[key];
+      if(typeof name!=='string'||!/^[a-z][a-z0-9-]*$/.test(name))throw new Error(`Registry: Ein ${KIND_NAMES[kind]} braucht das Feld ${key} in Kleinbuchstaben, Ziffern und Bindestrichen.`);
+      if(store[kind].has(name))throw new Error(`Registry: ${KIND_NAMES[kind]} „${name}“ ist doppelt eingetragen.`);
+      if(typeof m.name!=='string'||!m.name)throw new Error(`Registry: ${KIND_NAMES[kind]} „${name}“ braucht einen Namen für die Anzeige.`);
+      const errors=checkSpecs(m.params||[]);
+      if(errors.length)throw new Error(`Registry: ${KIND_NAMES[kind]} „${name}“ hat fehlerhafte Parameter.\n  ${errors.join('\n  ')}`);
+      store[kind].set(name,m);
+    }
+  }
+  const of=kind=>{
+    if(!store[kind])throw new Error(`Registry: unbekannte Modulart „${kind}“.`);
+    return store[kind];
+  };
+  return {
+    get:(kind,name)=>of(kind).get(name),
+    has:(kind,name)=>of(kind).has(name),
+    list:kind=>[...of(kind).values()]
+  };
+}
+return {createRegistry};
+})();
+
+/* ---------- core/format.js ---------- */
+const __mod3=(function(){
+const {MODES}=__mod0;
+/* ================= Formate prüfen ================= */
+/* Das Format für Akkordfolgen ist die Schnittstelle zwischen Akkord-Generatoren und Stilen:
+
+     {format:'blueseven.chords', version:1, key:0, mode:'dur',
+      generator:{id:'jazzy', version:1, params:{…}},          // optional, Herkunft
+      chords:[{root:0, tones:[0,4,7,11,14], duration:4,       // Pflicht
+               voicing:[57,60,64,67], bass:0,                 // optional, Vorschlag für die Lage
+               label:{roman:'I', root:'C', suffix:'maj9'},    // optional, nur Anzeige
+               source:{…}}]}                                  // optional, versteht nur der Generator
+
+   Musikalisch zählen nur key, mode, root, tones, duration, voicing und bass. */
+
+
+
+const CHORDS_FORMAT='blueseven.chords',CHORDS_VERSION=1;
+const isInt=v=>Number.isInteger(v);
+const isPc=v=>isInt(v)&&v>=0&&v<=11;
+const isMidi=v=>isInt(v)&&v>=0&&v<=127;
+const isObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+
+// Prüft eine Akkordfolge. Liefert eine Liste verständlicher Fehler, leer heißt in Ordnung.
+function checkChords(p){
+  if(!isObj(p))return ['Die Akkordfolge ist kein Objekt.'];
+  const errors=[];
+  if(p.format!==CHORDS_FORMAT)errors.push(`Das Feld format muss „${CHORDS_FORMAT}“ sein.`);
+  if(!isInt(p.version)||p.version<1)errors.push('Das Feld version muss eine ganze Zahl ab 1 sein.');
+  else if(p.version>CHORDS_VERSION)errors.push(`Die Akkordfolge hat Version ${p.version}, diese App versteht nur bis Version ${CHORDS_VERSION}.`);
+  if(!isPc(p.key))errors.push('Das Feld key muss eine Tonklasse von 0 bis 11 sein.');
+  if(!MODES.includes(p.mode))errors.push(`Das Feld mode muss eines von ${MODES.join(', ')} sein.`);
+  if(p.generator!==undefined&&(!isObj(p.generator)||typeof p.generator.id!=='string'))errors.push('Das Feld generator braucht eine id.');
+  if(!Array.isArray(p.chords)||!p.chords.length){errors.push('Das Feld chords muss eine Liste mit mindestens einem Akkord sein.');return errors;}
+  p.chords.forEach((c,i)=>{
+    const err=msg=>errors.push(`Akkord ${i+1}: ${msg}`);
+    if(!isObj(c)){err('ist kein Objekt.');return;}
+    if(!isPc(c.root))err('root muss eine Tonklasse von 0 bis 11 sein.');
+    if(!Array.isArray(c.tones)||c.tones.length<2||!c.tones.every(t=>isInt(t)&&t>=0&&t<=24))err('tones muss eine Liste aus mindestens zwei Halbtonabständen von 0 bis 24 sein.');
+    else{
+      if(c.tones[0]!==0)err('tones muss mit 0 für den Grundton beginnen.');
+      if(c.tones.some((t,j)=>j>0&&t<=c.tones[j-1]))err('tones muss aufsteigend und ohne Wiederholung sein.');
+    }
+    if(typeof c.duration!=='number'||!Number.isFinite(c.duration)||c.duration<=0)err('duration muss eine Länge in Vierteln größer als 0 sein.');
+    if(c.voicing!==undefined){
+      if(!Array.isArray(c.voicing)||c.voicing.length<3||!c.voicing.every(isMidi))err('voicing muss eine Liste aus mindestens drei MIDI-Noten sein.');
+      else{
+        if(c.voicing.some((m,j)=>j>0&&m<=c.voicing[j-1]))err('voicing muss aufsteigend sein, tiefste Note zuerst.');
+        if(isPc(c.root)&&Array.isArray(c.tones)){
+          const allowed=c.tones.map(t=>(c.root+t)%12),odd=c.voicing.find(m=>!allowed.includes(m%12));
+          if(odd!==undefined)err(`voicing enthält mit ${odd} einen Ton, der nicht zu root und tones gehört.`);
+        }
+      }
+    }
+    if(c.bass!==undefined&&!isPc(c.bass))err('bass muss eine Tonklasse von 0 bis 11 sein.');
+    if(c.label!==undefined&&!isObj(c.label))err('label muss ein Objekt sein.');
+  });
+  return errors;
+}
+return {CHORDS_FORMAT,CHORDS_VERSION,checkChords};
+})();
+
+/* ---------- chords/jazzy.js ---------- */
+const __mod4=(function(){
+const {noteName}=__mod0;
+const {CHORDS_FORMAT,CHORDS_VERSION}=__mod3;
+/* ================= Akkord-Generator „Jazzy“: Akkordpool, Bewertung, Stimmführung ================= */
+
+
+
 const QUAL={maj:[0,4,7,11],min:[0,3,7,10]};
 const SCALE={dur:[0,2,4,5,7,9,11],moll:[0,2,3,5,7,8,10]};
 const C=(id,off,q,rn,color)=>({id,off,q,rn,color:color?1:0});
@@ -232,10 +423,9 @@ function generate(S,avoid,rnd){
   for(let i=0;i<res.length;i++){x-=w[i];if(x<=0)return res[i][1];}
   return res[0][1];
 }
-function useSharps(key,mode){return [7,2,9,4,11,6].includes(mode==='dur'?key:(key+3)%12);}
 function hasNine(ch,mode,nine){return !!nine&&(ch.q==='maj'||SCALE[mode].includes((ch.off+2)%12));}
 function chordName(ch,key,mode,nine){
-  const root=(useSharps(key,mode)?NOTE_SHARP:NOTE_FLAT)[(key+ch.off)%12],n=hasNine(ch,mode,nine);
+  const root=noteName(key+ch.off,key,mode),n=hasNine(ch,mode,nine);
   return {root,suf:ch.q==='maj'?(n?'maj9':'maj7'):(n?'m9':'m7')};
 }
 function closeVoicings(pcs){
@@ -268,21 +458,103 @@ function voiceLoop(chords,key,mode,nine){
   }
   return chords.map((ch,i)=>({notes:out[i],bass:36+(key+ch.off)%12,rn:ch.rn,name:chordName(ch,key,mode,nine)}));
 }
-return {NOTE_FLAT,NOTE_SHARP,QUAL,SCALE,POOL,byId,generate,useSharps,chordName,voiceLoop};
+
+/* ---------- Schnittstelle für die App: Akkordfolgen im Format blueseven.chords ---------- */
+
+// Die Stufen-IDs einer Folge, die von Jazzy stammt. Mehr als chords[].source.id wird dafür nicht gelesen.
+const idsOf=p=>p&&Array.isArray(p.chords)?p.chords.map(c=>c&&c.source?c.source.id:undefined):[];
+
+// Baut aus Stufen-IDs die fertige Akkordfolge mit Lage und Beschriftung.
+function progression(ids,params,key,mode){
+  const pool=ids.map(id=>byId(mode,id)),voiced=voiceLoop(pool,key,mode,params.nine);
+  return {
+    format:CHORDS_FORMAT,version:CHORDS_VERSION,key,mode,
+    generator:{id:'jazzy',version:1,params:{n:params.n,spice:params.spice,nine:!!params.nine}},
+    chords:pool.map((ch,i)=>({
+      root:(key+ch.off)%12,
+      tones:hasNine(ch,mode,params.nine)?[...QUAL[ch.q],14]:QUAL[ch.q].slice(),
+      duration:4,
+      voicing:voiced[i].notes,
+      label:{roman:ch.rn,root:voiced[i].name.root,suffix:voiced[i].name.suf},
+      source:{id:ch.id,color:!!ch.color}
+    }))
+  };
+}
+
+const jazzy={
+  id:'jazzy',
+  name:'Jazzy',
+  version:1,
+  params:[
+    {id:'n',name:'Akkorde',type:'enum',default:4,options:[{value:3,name:'3'},{value:4,name:'4'}]},
+    {id:'spice',name:'Würze',type:'number',min:0,max:100,step:5,default:35,unit:'%'},
+    {id:'nine',name:'Mit None',type:'bool',default:true}
+  ],
+  // Neue Folge. ctx: key, mode, rnd, previous (bisherige Folge), locked (gehaltene Plätze), avoid (zuletzt erzeugte Folgen).
+  generate(params,ctx){
+    const prev=idsOf(ctx.previous);
+    const state={n:params.n,spice:params.spice,mode:ctx.mode,loop:prev,locks:ctx.locked||[]};
+    const avoid=(ctx.avoid||[]).map(p=>idsOf(p).join('-'));
+    return progression(generate(state,avoid,ctx.rnd),params,ctx.key,ctx.mode);
+  },
+  // Dieselbe Folge in anderer Tonart oder mit anderen Parametern, ohne neu zu würfeln.
+  // Liefert null, wenn die Folge nicht von Jazzy stammt oder nicht zum Tongeschlecht passt.
+  update(prog,params,ctx){
+    const ids=idsOf(prog);
+    if(!ids.length||ids.some(id=>!byId(ctx.mode,id)))return null;
+    return progression(ids,params,ctx.key,ctx.mode);
+  }
+};
+return {jazzy,QUAL,SCALE,POOL,byId,generate,chordName,voiceLoop};
+})();
+
+/* ---------- app/modules.js ---------- */
+const __mod5=(function(){
+const {createRegistry}=__mod2;
+const {jazzy}=__mod4;
+/* ================= Module der App ================= */
+/* Die eine Stelle, an der steht, welche Module die App anbietet. */
+
+
+
+const registry=createRegistry({
+  chords:[jazzy]
+});
+return {registry};
 })();
 
 /* ---------- app/state.js ---------- */
-const __mod1=(function(){
-const {NOTE_FLAT,NOTE_SHARP,POOL,byId,useSharps,voiceLoop}=__mod0;
+const __mod6=(function(){
+const {MODES,noteName}=__mod0;
+const {normalize}=__mod1;
+const {registry}=__mod5;
 /* ================= Zustand ================= */
+
+
 
 
 const $=id=>document.getElementById(id);
 const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR:80,volB:60,volD:45,loop:[],locks:[]};
 // Exportierte Namen werden nie neu zugewiesen, nur ihr Inhalt ändert sich. So sehen alle Module denselben Stand.
-const S=Object.assign({},DEF),favs=[],hist=[],recent=[],voiced=[];
+// chords sind die Akkorde der aktuellen Folge im Format blueseven.chords, recent die zuletzt erzeugten Folgen.
+const S=Object.assign({},DEF),favs=[],hist=[],recent=[],chords=[];
 const run={playing:false,active:-1};   // läuft gerade etwas, und welcher Akkord ist dran
 const LS='blueseven.v1';
+
+/* ---------- Akkord-Generator ---------- */
+// Vorerst fest Jazzy. Die Auswahl in der Oberfläche kommt mit Phase 4.
+const chordGen=()=>registry.get('chords','jazzy');
+const genParams=()=>normalize(chordGen().params,{n:S.n,spice:S.spice,nine:S.nine});
+// Unter blueseven.v1 und in den gemerkten Folgen steht eine Folge als Liste von Stufen-IDs.
+// Das hier macht daraus wieder eine Akkordfolge: über update des Generators, der nur die IDs liest.
+function fromIds(ids,key,mode){
+  if(!ids.length)return null;
+  return chordGen().update({chords:ids.map(id=>({source:{id}}))},genParams(),{key,mode});
+}
+const idsOf=p=>p.chords.map(c=>c.source.id);
+// Basston eines Akkords als MIDI-Note in der tiefen Oktave.
+const bassNote=c=>36+(c.bass===undefined?c.root:c.bass);
+
 function save(){try{localStorage.setItem(LS,JSON.stringify({S,favs}));}catch(e){}}
 function load(d){
   let src=d&&d.S?d:null;
@@ -290,24 +562,26 @@ function load(d){
   if(src&&src.S){
     for(const k in S)delete S[k];Object.assign(S,DEF,src.S);
     favs.length=0;if(Array.isArray(src.favs))favs.push(...src.favs);
-    if(!POOL[S.mode])S.mode='dur';
+    if(!MODES.includes(S.mode))S.mode='dur';
     S.n=S.n===3?3:4;
-    if(!Array.isArray(S.loop)||S.loop.length!==S.n||S.loop.some(id=>!byId(S.mode,id)))S.loop=[];
+    if(!Array.isArray(S.loop)||S.loop.length!==S.n||!fromIds(S.loop,S.key,S.mode))S.loop=[];
   }
   S.locks=Array.from({length:S.n},(_,i)=>!!(S.locks&&S.locks[i]&&S.loop[i]));
 }
-const keyName=()=>(useSharps(S.key,S.mode)?NOTE_SHARP:NOTE_FLAT)[S.key]+(S.mode==='dur'?'-Dur':'-Moll');
-function revoice(){voiced.length=0;voiced.push(...voiceLoop(S.loop.map(id=>byId(S.mode,id)),S.key,S.mode,S.nine));}
+const keyLabel=(key,mode)=>noteName(key,key,mode)+(mode==='dur'?'-Dur':'-Moll');
+const keyName=()=>keyLabel(S.key,S.mode);
+// Übernimmt eine Akkordfolge als aktuelle Folge.
+function setProg(p){chords.length=0;if(p)chords.push(...p.chords);}
+// Die aktuelle Folge neu ausgeben, zum Beispiel nach Tonartwechsel oder None an/aus.
+function revoice(){setProg(fromIds(S.loop,S.key,S.mode));}
 function pushHist(){if(S.loop.length){hist.push({key:S.key,mode:S.mode,n:S.n,loop:S.loop.slice()});if(hist.length>30)hist.shift();}}
-return {$,S,favs,hist,recent,voiced,run,save,load,keyName,revoice,pushHist};
+return {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,revoice,pushHist};
 })();
 
 /* ---------- app/ui.js ---------- */
-const __mod2=(function(){
-const {NOTE_FLAT,NOTE_SHARP,byId,useSharps,chordName}=__mod0;
-const {$,S,favs,hist,voiced,run,keyName}=__mod1;
+const __mod7=(function(){
+const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName}=__mod6;
 /* ================= Oberfläche ================= */
-
 
 
 function buildKeys(){
@@ -320,9 +594,9 @@ function buildKeys(){
 }
 function showNotes(i){
   document.querySelectorAll('#keys .on,#keys .bass').forEach(e=>e.classList.remove('on','bass'));
-  const v=voiced[i];if(!v)return;
-  v.notes.forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
-  const b=$('k'+v.bass);if(b)b.classList.add('bass');
+  const c=chords[i];if(!c)return;
+  c.voicing.forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
+  const b=$('k'+bassNote(c));if(b)b.classList.add('bass');
 }
 function setActive(i){
   run.active=i;
@@ -332,8 +606,8 @@ function setActive(i){
 function seg(id,val){document.querySelectorAll('#'+id+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(val))));}
 function render(){
   const tiles=$('tiles');tiles.style.gridTemplateColumns=`repeat(${S.n},minmax(0,1fr))`;
-  tiles.innerHTML=voiced.map((v,i)=>`<div class="slot">
-    <button class="tile" data-i="${i}" aria-label="${v.name.root}${v.name.suf} anhören"><span class="rn">${v.rn}</span><span class="root">${v.name.root}</span><span class="suf">${v.name.suf}</span></button>
+  tiles.innerHTML=chords.map((c,i)=>`<div class="slot">
+    <button class="tile" data-i="${i}" aria-label="${c.label.root}${c.label.suffix} anhören"><span class="rn">${c.label.roman}</span><span class="root">${c.label.root}</span><span class="suf">${c.label.suffix}</span></button>
     <button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button></div>`).join('');
   setActive(run.playing?run.active:-1);
   $('status').innerHTML=`${keyName()}<br>${S.bpm} BPM`;
@@ -350,8 +624,8 @@ function renderFavs(){
   const el=$('favs');
   if(!favs.length){el.innerHTML='<p class="hint">Noch nichts gemerkt. Das Herz unten rechts legt die aktuelle Folge hier ab.</p>';return;}
   el.innerHTML=favs.map((f,i)=>{
-    const kn=(useSharps(f.key,f.mode)?NOTE_SHARP:NOTE_FLAT)[f.key]+(f.mode==='dur'?'-Dur':'-Moll');
-    const names=f.loop.map(id=>{const c=chordName(byId(f.mode,id),f.key,f.mode,S.nine);return c.root+c.suf;}).join(' · ');
+    const kn=keyLabel(f.key,f.mode),p=fromIds(f.loop,f.key,f.mode);
+    const names=p?p.chords.map(c=>c.label.root+c.label.suffix).join(' · '):'';
     return `<div class="fav"><button class="load" data-i="${i}"><b>${kn}</b>${names}</button><button class="del" data-i="${i}" aria-label="Folge ${i+1} löschen">×</button></div>`;
   }).join('');
 }
@@ -359,8 +633,8 @@ return {buildKeys,showNotes,setActive,render,renderFavs};
 })();
 
 /* ---------- audio.js ---------- */
-const __mod3=(function(){
-const {$,S}=__mod1;
+const __mod8=(function(){
+const {$,S}=__mod6;
 /* ================= Klang ================= */
 
 
@@ -463,10 +737,10 @@ return {initAudio,setVols,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancel
 })();
 
 /* ---------- sequencer.js ---------- */
-const __mod4=(function(){
-const {$,S,voiced,run}=__mod1;
-const {setActive,showNotes}=__mod2;
-const {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut}=__mod3;
+const __mod9=(function(){
+const {$,S,chords,run,bassNote}=__mod6;
+const {setActive,showNotes}=__mod7;
+const {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut}=__mod8;
 /* ================= Ablauf ================= */
 
 
@@ -474,13 +748,13 @@ const {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fade
 
 let timer=0,nextBar=0,barIdx=0,queue=[];
 function scheduleBar(t0,i){
-  const spb=60/S.bpm,sw=S.swing/100*spb/6,n=voiced.length;
+  const spb=60/S.bpm,sw=S.swing/100*spb/6,n=chords.length;
   const T=b=>t0+b*spb+(Math.round(b*2)%2?sw:0);     // Achtel zwischen den Schlägen kommen etwas später
-  const v=voiced[i%n],nx=voiced[(i+1)%n];
-  if(S.feel==='pad')v.notes.forEach((m,k)=>rhodes(m,T(0)+k*.016,3.8*spb,.6+(k===3?.1:0)));
-  else if(S.feel==='comp')[[0,1.3,.75],[1.5,.7,.52],[2.5,1.25,.66]].forEach(([b,d,ve])=>v.notes.forEach((m,k)=>rhodes(m,T(b)+k*.008,d*spb,ve+(k===3?.08:0))));
-  else[0,1,2,3,2,1,2,3].forEach((k,j)=>rhodes(v.notes[k],T(j/2),1.7*spb,j%2?.5:.7));
-  bass(v.bass,T(0),2.2*spb,.9);bass(v.bass,T(2.5),.7*spb,.7);bass(nx.bass-1,T(3.5),.4*spb,.6);
+  const v=chords[i%n],nx=chords[(i+1)%n],notes=v.voicing,low=bassNote(v);
+  if(S.feel==='pad')notes.forEach((m,k)=>rhodes(m,T(0)+k*.016,3.8*spb,.6+(k===3?.1:0)));
+  else if(S.feel==='comp')[[0,1.3,.75],[1.5,.7,.52],[2.5,1.25,.66]].forEach(([b,d,ve])=>notes.forEach((m,k)=>rhodes(m,T(b)+k*.008,d*spb,ve+(k===3?.08:0))));
+  else[0,1,2,3,2,1,2,3].forEach((k,j)=>rhodes(notes[k],T(j/2),1.7*spb,j%2?.5:.7));
+  bass(low,T(0),2.2*spb,.9);bass(low,T(2.5),.7*spb,.7);bass(bassNote(nx)-1,T(3.5),.4*spb,.6);
   for(let j=0;j<8;j++)hat(T(j/2),j%2?.4:.7);
   kick(T(0),1);kick(T(2.5),.75);rim(T(1),.7);rim(T(3),.8);
   queue.push({t:t0,i:i%n});
@@ -488,7 +762,7 @@ function scheduleBar(t0,i){
 function tick(){
   const now=audioNow();
   prune();
-  while(nextBar<now+.6){scheduleBar(nextBar,barIdx);nextBar+=240/S.bpm;barIdx=(barIdx+1)%voiced.length;}
+  while(nextBar<now+.6){scheduleBar(nextBar,barIdx);nextBar+=240/S.bpm;barIdx=(barIdx+1)%chords.length;}
 }
 function frame(){
   if(!run.playing)return;
@@ -514,31 +788,30 @@ function stop(){
 function audition(i){
   if(!initAudio())return;
   cancelFade();
-  const v=voiced[i],t=audioNow()+.03;
-  v.notes.forEach((m,k)=>rhodes(m,t+k*.02,1.6,.7));bass(v.bass,t,1.4,.8);
+  const v=chords[i],t=audioNow()+.03;
+  v.voicing.forEach((m,k)=>rhodes(m,t+k*.02,1.6,.7));bass(bassNote(v),t,1.4,.8);
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
 return {start,stop,audition};
 })();
 
 /* ---------- app/main.js ---------- */
-const __mod5=(function(){
-const {generate}=__mod0;
-const {$,S,favs,hist,recent,run,save,load,revoice,pushHist}=__mod1;
-const {buildKeys,render,renderFavs}=__mod2;
-const {setVols}=__mod3;
-const {start,stop,audition}=__mod4;
+const __mod10=(function(){
+const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist}=__mod6;
+const {buildKeys,render,renderFavs}=__mod7;
+const {setVols}=__mod8;
+const {start,stop,audition}=__mod9;
 /* ================= Bedienung ================= */
 
 
 
 
 
-
 function newLoop(){
-  S.loop=generate(S,recent);
-  recent.push(S.loop.join('-'));if(recent.length>12)recent.shift();
-  revoice();render();save();
+  const p=chordGen().generate(genParams(),{key:S.key,mode:S.mode,rnd:Math.random,previous:fromIds(S.loop,S.key,S.mode),locked:S.locks,avoid:recent});
+  S.loop=idsOf(p);setProg(p);
+  recent.push(p);if(recent.length>12)recent.shift();
+  render();save();
 }
 function bind(){
   $('keys12').innerHTML=['C','D♭','D','E♭','E','F','F♯','G','A♭','A','B♭','B'].map((n,i)=>`<button data-v="${i}">${n}</button>`).join('');
