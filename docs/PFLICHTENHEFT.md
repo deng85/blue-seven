@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Stand | 20.11.2026, Entwurf 2 |
+| Stand | 20.11.2026, Entwurf 3 |
 | Bezug | `HANDOVER.md`, Quelltext in `src/` nach PR 1 (Commit `6014916`) |
 | Status | Zur Abstimmung. Es ist noch nichts davon umgesetzt. Getroffene Entscheidungen stehen in Abschnitt 17. |
 
@@ -554,7 +554,7 @@ Entschieden: Mixer-Einstellungen gelten pro Song, nicht pro Stil.
 
 - **F-P8** Alle Mixer- und Effektwerte, die der Nutzer einstellt, werden in den Abschnitt `mixer` des aktuellen Songs geschrieben. Es gibt keinen zweiten Ort für diese Werte.
 - **F-P9** Wird der Inhalt des aktuellen Songs neu erzeugt (Würfeln, „Song neu bauen“, Änderung von Akkord- oder Stilparametern), übernimmt die App die Einstellungen des Nutzers in den neuen Stand. Zugeordnet wird über die stabilen IDs von Kanälen, Effektspuren, Inserts und Sends. Was es im neuen Stand nicht mehr gibt, entfällt.
-- **F-P10** Ein neuer Song beginnt mit den Standardwerten seines Stils. Ein neuer Song entsteht durch „Neuer Song“ oder durch den Wechsel des Stils.
+- **F-P10** Ein neuer Song beginnt mit den Standardwerten seines Stils. Ein neuer Song entsteht durch „Neuer Song“ oder durch den Wechsel des Stils. Der bisherige Song wird dabei vorerst nicht automatisch gesichert.
 - **F-P11** Ein gespeicherter oder importierter Song bringt seinen eigenen Mixer mit. Beim Laden ersetzt dieser den Mixer des bisherigen Songs vollständig.
 - **F-P12** Der aktuelle Song samt Mixer überlebt das Neuladen der Seite. Für Jazzy Beats bleibt das heutige Verhalten erhalten: Die drei Lautstärken stehen nach dem Neuladen und nach jedem Würfeln so, wie der Nutzer sie eingestellt hat.
 - **F-P13** Pro Kanal und pro Effekt gibt es „Zurücksetzen“, das die Standardwerte des Stils wiederherstellt.
@@ -630,19 +630,23 @@ Die Phasen 0 bis 3 sind reiner Umbau ohne neue Funktion. Sie tragen das größte
 | Normale Skripte oder ES-Module in `src/`? | ES-Module. Der Build führt sie weiter zu einer einzelnen `index.html` zusammen, die per Doppelklick läuft | 6.2, R5, Phase 0, A4, A6, A13 |
 | Darf ein Stil die Akkordlage selbst bestimmen? | Ja. `voicing` ist ein Vorschlag, verbindlich sind nur die Tonklassen | 7.1, 8.1, F-D2a, A9a |
 | Mixer-Einstellungen pro Stil oder pro Song? | Pro Song | 12.1, F-S3, F-U9, A14a |
+| Den bisherigen Song beim Stilwechsel automatisch sichern? | Vorerst nein. Der neue Song beginnt mit Standardwerten, die Einstellungen des alten entfallen, wenn er nicht vorher gespeichert wurde | F-P10 |
 
-### 17.2 Noch offen
+### 17.2 Arbeitsannahmen
 
-1. **Jazzy Beats als Song:** Bleibt Jazzy Beats eine Endlosschleife wie heute, oder soll es später auch ein Arrangement bekommen?
-2. **Akkordlänge in Deep House:** Ein Takt pro Akkord, zwei Takte oder wählbar?
-3. **Gemerkte Folgen:** Soll „Merken“ weiter nur die Akkordfolge sichern, oder zusätzlich Stil und Songparameter?
-4. **Tonart und Tongeschlecht:** Bleiben sie Einstellungen der App für alle Akkord-Generatoren (Vorschlag), oder darf ein Generator eigene Tonleitern mitbringen?
-5. **Umfang Deep House im ersten Wurf:** Reicht ein fester Aufbau mit Varianten, oder soll der Aufbau selbst gewürfelt werden?
-6. **Noten bearbeiten:** Ist ein einfacher Editor für später gewünscht? Das hätte Einfluss darauf, ob Patterns stabile IDs brauchen.
-7. **Export als Audio oder MIDI:** Wie wichtig ist das, und in welcher Reihenfolge nach Phase 6?
-8. **Claude-Artifact:** Soll die zweite Kopie als Artifact weiter gepflegt werden? Dort ist das Speichern von Dateien per Skript nicht möglich, der Export ginge nur über die Zwischenablage.
-9. **Name:** Bleibt es bei „Blue Seven“, oder soll die App mit dem Umbau „Jazzy DAW“ heißen?
-10. **Stilwechsel:** Nach 12.1 beginnt beim Wechsel des Stils ein neuer Song mit Standardwerten. Soll der bisherige Song dabei automatisch gesichert werden, damit seine Einstellungen nicht verloren gehen?
+Diese Fragen sind nicht ausdrücklich entschieden. Damit die Umsetzung nicht wartet, gilt jeweils die genannte Annahme, bis der Nutzer etwas anderes sagt. Keine davon betrifft die Phasen 0 bis 3.
+
+| Nr. | Frage | Annahme | Wirkt ab |
+|---|---|---|---|
+| 1 | Bleibt Jazzy Beats eine Endlosschleife, oder bekommt es ein Arrangement? | Endlosschleife wie heute | Phase 2 |
+| 2 | Akkordlänge in Deep House | Zwei Takte pro Akkord als Standard, über einen Parameter auf einen Takt umstellbar | Phase 5 |
+| 3 | Sichert „Merken“ nur die Akkordfolge oder auch Stil und Songparameter? | Nur die Akkordfolge wie heute. Ganze Songs sichert das Speichern aus Phase 6 | Phase 6 |
+| 4 | Gehören Tonart und Tongeschlecht der App oder dem Akkord-Generator? | Der App, mit `dur` und `moll` wie heute | Phase 1 |
+| 5 | Fester oder gewürfelter Aufbau in Deep House? | Fester Aufbau mit Varianten je Abschnitt | Phase 5 |
+| 6 | Später ein Editor für Noten? | Nicht geplant. Patterns bekommen trotzdem sprechende, stabile IDs, weil das nichts kostet | Phase 2 |
+| 7 | Export als Audio oder MIDI | Nach Phase 6, MIDI vor Audio | später |
+| 8 | Wird die Kopie als Claude-Artifact weiter gepflegt? | Während des Umbaus nicht. Die Anbindung an `window.claude.hot` bleibt im Code erhalten | Phase 0 |
+| 9 | Name der App | Bleibt „Blue Seven“ | – |
 
 ## 18. Glossar
 
