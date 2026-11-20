@@ -156,7 +156,7 @@ test/
 docs/
 ```
 
-Stand nach Phase 0: `core/` und `app/` gibt es. `harmony.js`, `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/`, bis sie in Phase 1 zu `chords/jazzy.js` und in Phase 3 zu Instrumenten, Effekten und Engine werden.
+Stand nach Phase 1: `core/`, `chords/` und `app/` gibt es. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/`, bis sie in Phase 3 zu Instrumenten, Effekten und Engine werden.
 
 `src/index.html` enthält nur noch Markup, die Zeile für `styles.css` und eine Zeile für das Skript, an deren Stelle der Build das zusammengeführte Skript setzt.
 
@@ -246,7 +246,9 @@ const jazzy = {
 | `rnd` | Zufallsfunktion wie `Math.random`. Mit festem Startwert ist das Ergebnis reproduzierbar |
 | `previous` | Die bisherige Folge oder `null` |
 | `locked` | Wahrheitswerte pro Platz. Gehaltene Akkorde aus `previous` bleiben an ihrem Platz |
-| `avoid` | Zuletzt erzeugte Folgen, die gemieden werden sollen |
+| `avoid` | Zuletzt erzeugte Folgen als Liste von Akkordfolgen, die gemieden werden sollen |
+
+`update` bekommt als `ctx` nur `key` und `mode`. Es liefert `null`, wenn der Generator die Folge nicht versteht, zum Beispiel weil sie von einem anderen Generator stammt. Jazzy liest dabei nur `chords[].source.id`. Darüber stellt die App auch die unter `blueseven.v1` gespeicherten Stufen-IDs wieder als Akkordfolge her.
 
 Anforderungen:
 
@@ -254,7 +256,7 @@ Anforderungen:
 - **F-C2** Jazzy übernimmt `POOL`, `scoreLoop`, `generate` und `voiceLoop` aus `src/harmony.js` unverändert in der Logik und liefert zusätzlich das Format aus 7.1.
 - **F-C3** Halten, Würze, 3 oder 4 Akkorde, None an oder aus, Tonartwechsel ohne neues Würfeln und das Meiden der letzten 12 Folgen funktionieren wie heute.
 - **F-C4** Die Oberfläche zeigt die Parameter des gewählten Akkord-Generators aus dessen Parameterbeschreibung. Generatoren ohne `update` werden bei Parameteränderung neu gewürfelt.
-- **F-C5** Ein zweiter, sehr einfacher Akkord-Generator (zum Beispiel feste Kadenzen aus Dreiklängen) wird als Beweis der Schnittstelle mitgeliefert, mindestens als Test-Fixture.
+- **F-C5** Ein zweiter, sehr einfacher Akkord-Generator (zum Beispiel feste Kadenzen aus Dreiklängen) wird als Beweis der Schnittstelle mitgeliefert, mindestens als Test-Fixture. Umgesetzt als `test/fixtures/plain-chords.js`.
 
 ## 8. Schnittstelle Stil-Generator
 

@@ -1,7 +1,7 @@
 // Tests für die Harmonielogik. Laufen mit: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as H from '../src/harmony.js';
+import * as H from '../src/chords/jazzy.js';
 import { createRng } from '../src/core/rng.js';
 
 // Fester Zufallsgenerator, damit Folgen reproduzierbar sind.

@@ -26,7 +26,8 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 |---|---|
 | `src/index.html` | Markup mit je einer Platzhalter-Zeile für die Styles (`/*@include styles.css*/`) und das Skript (`/*@bundle app/main.js*/`) |
 | `src/styles.css` | Gestaltung |
-| `src/harmony.js` | Akkordpool, `generate`, `voiceLoop` (ohne DOM, in Node testbar) |
+| `src/chords/jazzy.js` | Akkord-Generator „Jazzy“: Akkordpool, Bewertung, Stimmführung. Liefert Akkordfolgen im Format `blueseven.chords` (ohne DOM, in Node testbar) |
+| `src/app/modules.js` | Die eine Stelle, an der steht, welche Module die App anbietet |
 | `src/app/state.js` | Zustand `S`, Speichern in `localStorage` |
 | `src/app/ui.js` | Kacheln, Klaviatur, Regler |
 | `src/audio.js` | Rhodes, Bass, Drums (Web Audio) |
@@ -34,9 +35,11 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/app/main.js` | Event-Handler und Start |
 | `src/core/registry.js` | Verzeichnis der Module (Akkord-Generatoren, Stile, Instrumente, Effekte) |
 | `src/core/params.js` | Gemeinsame Parameterbeschreibung: prüfen, Standardwerte, begrenzen |
+| `src/core/format.js` | Prüfung des Formats für Akkordfolgen |
+| `src/core/notes.js` | Tonnamen und Vorzeichen |
 | `src/core/rng.js` | Zufall mit Startwert für reproduzierbare Folgen und Songs |
 
-Der Kern in `src/core/` ist das Fundament für den Umbau zur modularen DAW und wird von der App noch nicht benutzt. `harmony.js`, `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/` und ziehen in den Phasen 1 und 3 des Pflichtenhefts um. Welcher Ordner aus welchem importieren darf, prüft ein Test.
+Die App holt sich Akkordfolgen über die Registry vom Akkord-Generator und arbeitet mit dem Format `blueseven.chords` weiter. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/` und werden in Phase 3 des Pflichtenhefts zu Instrumenten, Effekten und Engine. Welcher Ordner aus welchem importieren darf, prüft ein Test.
 
 Die Dateien in `src/` sind ES-Module. `node build.mjs` (oder `npm run build`) führt sie zu einem einzigen Inline-Skript zusammen und setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt nichts nach. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
 

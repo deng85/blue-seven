@@ -1,6 +1,5 @@
 /* ================= Oberfläche ================= */
-import {NOTE_FLAT,NOTE_SHARP,byId,useSharps,chordName} from '../harmony.js';
-import {$,S,favs,hist,voiced,run,keyName} from './state.js';
+import {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName} from './state.js';
 
 function buildKeys(){
   const W=10,H=46,white=[0,2,4,5,7,9,11];let wi=0,ws='',bs='';
@@ -12,9 +11,9 @@ function buildKeys(){
 }
 function showNotes(i){
   document.querySelectorAll('#keys .on,#keys .bass').forEach(e=>e.classList.remove('on','bass'));
-  const v=voiced[i];if(!v)return;
-  v.notes.forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
-  const b=$('k'+v.bass);if(b)b.classList.add('bass');
+  const c=chords[i];if(!c)return;
+  c.voicing.forEach(m=>{const e=$('k'+m);if(e)e.classList.add('on');});
+  const b=$('k'+bassNote(c));if(b)b.classList.add('bass');
 }
 function setActive(i){
   run.active=i;
@@ -24,8 +23,8 @@ function setActive(i){
 function seg(id,val){document.querySelectorAll('#'+id+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(val))));}
 function render(){
   const tiles=$('tiles');tiles.style.gridTemplateColumns=`repeat(${S.n},minmax(0,1fr))`;
-  tiles.innerHTML=voiced.map((v,i)=>`<div class="slot">
-    <button class="tile" data-i="${i}" aria-label="${v.name.root}${v.name.suf} anhören"><span class="rn">${v.rn}</span><span class="root">${v.name.root}</span><span class="suf">${v.name.suf}</span></button>
+  tiles.innerHTML=chords.map((c,i)=>`<div class="slot">
+    <button class="tile" data-i="${i}" aria-label="${c.label.root}${c.label.suffix} anhören"><span class="rn">${c.label.roman}</span><span class="root">${c.label.root}</span><span class="suf">${c.label.suffix}</span></button>
     <button class="lock" data-i="${i}" aria-pressed="${!!S.locks[i]}">${S.locks[i]?'Gehalten':'Halten'}</button></div>`).join('');
   setActive(run.playing?run.active:-1);
   $('status').innerHTML=`${keyName()}<br>${S.bpm} BPM`;
@@ -42,8 +41,8 @@ function renderFavs(){
   const el=$('favs');
   if(!favs.length){el.innerHTML='<p class="hint">Noch nichts gemerkt. Das Herz unten rechts legt die aktuelle Folge hier ab.</p>';return;}
   el.innerHTML=favs.map((f,i)=>{
-    const kn=(useSharps(f.key,f.mode)?NOTE_SHARP:NOTE_FLAT)[f.key]+(f.mode==='dur'?'-Dur':'-Moll');
-    const names=f.loop.map(id=>{const c=chordName(byId(f.mode,id),f.key,f.mode,S.nine);return c.root+c.suf;}).join(' · ');
+    const kn=keyLabel(f.key,f.mode),p=fromIds(f.loop,f.key,f.mode);
+    const names=p?p.chords.map(c=>c.label.root+c.label.suffix).join(' · '):'';
     return `<div class="fav"><button class="load" data-i="${i}"><b>${kn}</b>${names}</button><button class="del" data-i="${i}" aria-label="Folge ${i+1} löschen">×</button></div>`;
   }).join('');
 }

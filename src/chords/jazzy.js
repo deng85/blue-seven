@@ -1,6 +1,7 @@
-/* ================= Harmonie: Akkordpool, Bewertung, Stimmführung ================= */
-const NOTE_FLAT=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
-const NOTE_SHARP=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+/* ================= Akkord-Generator „Jazzy“: Akkordpool, Bewertung, Stimmführung ================= */
+import {noteName} from '../core/notes.js';
+import {CHORDS_FORMAT,CHORDS_VERSION} from '../core/format.js';
+
 const QUAL={maj:[0,4,7,11],min:[0,3,7,10]};
 const SCALE={dur:[0,2,4,5,7,9,11],moll:[0,2,3,5,7,8,10]};
 const C=(id,off,q,rn,color)=>({id,off,q,rn,color:color?1:0});
@@ -62,10 +63,9 @@ function generate(S,avoid,rnd){
   for(let i=0;i<res.length;i++){x-=w[i];if(x<=0)return res[i][1];}
   return res[0][1];
 }
-function useSharps(key,mode){return [7,2,9,4,11,6].includes(mode==='dur'?key:(key+3)%12);}
 function hasNine(ch,mode,nine){return !!nine&&(ch.q==='maj'||SCALE[mode].includes((ch.off+2)%12));}
 function chordName(ch,key,mode,nine){
-  const root=(useSharps(key,mode)?NOTE_SHARP:NOTE_FLAT)[(key+ch.off)%12],n=hasNine(ch,mode,nine);
+  const root=noteName(key+ch.off,key,mode),n=hasNine(ch,mode,nine);
   return {root,suf:ch.q==='maj'?(n?'maj9':'maj7'):(n?'m9':'m7')};
 }
 function closeVoicings(pcs){
@@ -99,4 +99,51 @@ function voiceLoop(chords,key,mode,nine){
   return chords.map((ch,i)=>({notes:out[i],bass:36+(key+ch.off)%12,rn:ch.rn,name:chordName(ch,key,mode,nine)}));
 }
 
-export {NOTE_FLAT,NOTE_SHARP,QUAL,SCALE,POOL,byId,generate,useSharps,chordName,voiceLoop};
+/* ---------- Schnittstelle für die App: Akkordfolgen im Format blueseven.chords ---------- */
+
+// Die Stufen-IDs einer Folge, die von Jazzy stammt. Mehr als chords[].source.id wird dafür nicht gelesen.
+const idsOf=p=>p&&Array.isArray(p.chords)?p.chords.map(c=>c&&c.source?c.source.id:undefined):[];
+
+// Baut aus Stufen-IDs die fertige Akkordfolge mit Lage und Beschriftung.
+function progression(ids,params,key,mode){
+  const pool=ids.map(id=>byId(mode,id)),voiced=voiceLoop(pool,key,mode,params.nine);
+  return {
+    format:CHORDS_FORMAT,version:CHORDS_VERSION,key,mode,
+    generator:{id:'jazzy',version:1,params:{n:params.n,spice:params.spice,nine:!!params.nine}},
+    chords:pool.map((ch,i)=>({
+      root:(key+ch.off)%12,
+      tones:hasNine(ch,mode,params.nine)?[...QUAL[ch.q],14]:QUAL[ch.q].slice(),
+      duration:4,
+      voicing:voiced[i].notes,
+      label:{roman:ch.rn,root:voiced[i].name.root,suffix:voiced[i].name.suf},
+      source:{id:ch.id,color:!!ch.color}
+    }))
+  };
+}
+
+const jazzy={
+  id:'jazzy',
+  name:'Jazzy',
+  version:1,
+  params:[
+    {id:'n',name:'Akkorde',type:'enum',default:4,options:[{value:3,name:'3'},{value:4,name:'4'}]},
+    {id:'spice',name:'Würze',type:'number',min:0,max:100,step:5,default:35,unit:'%'},
+    {id:'nine',name:'Mit None',type:'bool',default:true}
+  ],
+  // Neue Folge. ctx: key, mode, rnd, previous (bisherige Folge), locked (gehaltene Plätze), avoid (zuletzt erzeugte Folgen).
+  generate(params,ctx){
+    const prev=idsOf(ctx.previous);
+    const state={n:params.n,spice:params.spice,mode:ctx.mode,loop:prev,locks:ctx.locked||[]};
+    const avoid=(ctx.avoid||[]).map(p=>idsOf(p).join('-'));
+    return progression(generate(state,avoid,ctx.rnd),params,ctx.key,ctx.mode);
+  },
+  // Dieselbe Folge in anderer Tonart oder mit anderen Parametern, ohne neu zu würfeln.
+  // Liefert null, wenn die Folge nicht von Jazzy stammt oder nicht zum Tongeschlecht passt.
+  update(prog,params,ctx){
+    const ids=idsOf(prog);
+    if(!ids.length||ids.some(id=>!byId(ctx.mode,id)))return null;
+    return progression(ids,params,ctx.key,ctx.mode);
+  }
+};
+
+export {jazzy,QUAL,SCALE,POOL,byId,generate,chordName,voiceLoop};

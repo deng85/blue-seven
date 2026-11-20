@@ -1,14 +1,14 @@
 /* ================= Bedienung ================= */
-import {generate} from '../harmony.js';
-import {$,S,favs,hist,recent,run,save,load,revoice,pushHist} from './state.js';
+import {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist} from './state.js';
 import {buildKeys,render,renderFavs} from './ui.js';
 import {setVols} from '../audio.js';
 import {start,stop,audition} from '../sequencer.js';
 
 function newLoop(){
-  S.loop=generate(S,recent);
-  recent.push(S.loop.join('-'));if(recent.length>12)recent.shift();
-  revoice();render();save();
+  const p=chordGen().generate(genParams(),{key:S.key,mode:S.mode,rnd:Math.random,previous:fromIds(S.loop,S.key,S.mode),locked:S.locks,avoid:recent});
+  S.loop=idsOf(p);setProg(p);
+  recent.push(p);if(recent.length>12)recent.shift();
+  render();save();
 }
 function bind(){
   $('keys12').innerHTML=['C','D♭','D','E♭','E','F','F♯','G','A♭','A','B♭','B'].map((n,i)=>`<button data-v="${i}">${n}</button>`).join('');

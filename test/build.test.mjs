@@ -61,7 +61,7 @@ const ALLOWED = {
 };
 // Übergang: Diese Dateien liegen noch im Wurzelordner von src/ und ziehen in den Phasen 1 und 3 um.
 // Bis dahin gelten für sie und für Importe auf sie keine Regeln. Die Liste darf nur kürzer werden.
-const LEGACY = ['harmony.js', 'audio.js', 'sequencer.js'];
+const LEGACY = ['audio.js', 'sequencer.js'];
 
 test('Module importieren nur aus den Ordnern, die ihnen erlaubt sind', () => {
   const files = modules();
