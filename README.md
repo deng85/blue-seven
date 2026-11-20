@@ -35,11 +35,15 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/app/main.js` | Event-Handler und Start |
 | `src/core/registry.js` | Verzeichnis der Module (Akkord-Generatoren, Stile, Instrumente, Effekte) |
 | `src/core/params.js` | Gemeinsame Parameterbeschreibung: prüfen, Standardwerte, begrenzen |
-| `src/core/format.js` | Prüfung des Formats für Akkordfolgen |
+| `src/core/format.js` | Prüfung der Formate für Akkordfolgen und Songs, Parameteradressen |
 | `src/core/notes.js` | Tonnamen und Vorzeichen |
 | `src/core/rng.js` | Zufall mit Startwert für reproduzierbare Folgen und Songs |
+| `src/core/time.js` | Viertel in Sekunden umrechnen, mit Tempo und Swing |
+| `src/core/gain.js` | Reglerwert 0 bis 100 in linearen Pegel und zurück |
+| `src/core/voicing.js` | Stimmführung für Akkordfolgen ohne Lage |
+| `src/styles/jazzy-beats.js` | Stil „Jazzy Beats“: baut aus einer Akkordfolge einen Song als JSON |
 
-Die App holt sich Akkordfolgen über die Registry vom Akkord-Generator und arbeitet mit dem Format `blueseven.chords` weiter. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/` und werden in Phase 3 des Pflichtenhefts zu Instrumenten, Effekten und Engine. Welcher Ordner aus welchem importieren darf, prüft ein Test.
+Die App holt sich Akkordfolgen über die Registry vom Akkord-Generator und arbeitet mit dem Format `blueseven.chords` weiter. Der Stil Jazzy Beats kann daraus schon einen Song im Format `blueseven.song` erzeugen. Die App spielt aber bis Phase 3 noch über den bisherigen Ablauf und benutzt den Song noch nicht. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/` und werden in Phase 3 des Pflichtenhefts zu Instrumenten, Effekten und Engine. Welcher Ordner aus welchem importieren darf, prüft ein Test.
 
 Die Dateien in `src/` sind ES-Module. `node build.mjs` (oder `npm run build`) führt sie zu einem einzigen Inline-Skript zusammen und setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt nichts nach. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
 

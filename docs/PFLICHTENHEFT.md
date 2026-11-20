@@ -156,7 +156,7 @@ test/
 docs/
 ```
 
-Stand nach Phase 1: `core/`, `chords/` und `app/` gibt es. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/`, bis sie in Phase 3 zu Instrumenten, Effekten und Engine werden.
+Stand nach Phase 2: `core/`, `chords/`, `styles/` und `app/` gibt es. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/`, bis sie in Phase 3 zu Instrumenten, Effekten und Engine werden.
 
 `src/index.html` enthält nur noch Markup, die Zeile für `styles.css` und eine Zeile für das Skript, an deren Stelle der Build das zusammengeführte Skript setzt.
 
@@ -266,14 +266,16 @@ const deepHouse = {
   name: 'Deep House',
   version: 1,
   params: [ /* Parameterbeschreibungen */ ],
-  tempo: { default: 122, min: 116, max: 128 },
+  tempo: { default: 122, min: 116, max: 128, swing: 0 },
 
   // Baut aus einer Akkordfolge einen vollständigen Song.
   generate(progression, params, ctx) { return song; }
 };
 ```
 
-`ctx` enthält `rnd` und `bpm`. Der Rückgabewert ist ein Song nach Abschnitt 9.
+`ctx` enthält `rnd`, `bpm` und `swing` (0 bis 100). Fehlen Tempo oder Swing, gelten die Standardwerte aus `tempo`. Werte außerhalb von `min` und `max` werden begrenzt. Der Rückgabewert ist ein Song nach Abschnitt 9. Besteht die Akkordfolge die Prüfung aus 7.1 nicht, wirft `generate` einen Fehler mit den Meldungen der Prüfung.
+
+Tempo und Swing stehen in `ctx` und nicht in `params`, weil sie zum Song-Tempo gehören und die App sie über alle Stile hinweg verwaltet.
 
 - **F-S1** Ein Stil-Generator ist eine reine Funktion und läuft in Node ohne Browser. Er erzeugt keinen Ton.
 - **F-S2** Ein Stil-Generator liest von der Akkordfolge nur die in 7.1 als musikalisch markierten Felder.
@@ -291,7 +293,17 @@ Bildet `scheduleBar` aus `src/sequencer.js` als Daten ab:
 - Hi-Hat in Achteln, Kick auf 1 und 2-und, Rim auf 2 und 4.
 - Drei Spuren: Rhodes, Bass, Drums. Ein Abschnitt, der endlos wiederholt wird.
 - Mixer wie heute: Rhodes mit Tiefpass 3600 Hz und Stereo-Tremolo 4,4 Hz, Send 0,24 auf den Hall; Drums mit Send 0,06 auf den Hall; Bass trocken; Kompressor auf der Summe (Schwelle −16 dB, Verhältnis 4).
-- Tempo 56 bis 132 BPM, Standard 84, Swing wie heute.
+- Tempo 56 bis 132 BPM, Standard 84, Swing wie heute (Standard 55).
+- Instrumente mit `level` 1,1 (Rhodes), 1 (Bass) und 0,9 (Drums). Das sind die festen Faktoren aus `setVols`. Die Kanalpegel sind damit reine Reglerwerte nach F-M6.
+
+Was über den heutigen Ablauf hinausgeht, weil der Stil jede Akkordfolge verarbeiten muss:
+
+- **Lage:** Fehlt `voicing` bei einem Akkord, bildet der Stil für die ganze Folge eine eigene Lage mit `core/voicing.js`.
+- **Akkordlänge:** Ein Akkord wird in Abschnitte von einem Takt zerlegt, der letzte ist gegebenenfalls kürzer. Rhodes und Bass spielen pro Abschnitt das Muster des Takts, Noten hinter dem Abschnittsende entfallen. Der Durchgangston liegt eine halbe Zählzeit vor dem Abschnittsende und führt zum Basston des nächsten Abschnitts. Liegend klingt 0,2 Viertel kürzer als der Abschnitt.
+- **Drums:** Ein Pattern von einem Takt, das über den ganzen Loop wiederholt wird, unabhängig von den Akkordgrenzen.
+- **Anzahl der Töne:** Betont wird der oberste Ton der Lage. Gebrochen läuft einmal hinauf und dann zwischen dem zweiten und dem obersten Ton hin und her, bei vier Tönen also wie heute 1-2-3-4-3-2-3-4.
+
+Abgesichert wird das durch `test/jazzy-beats.test.mjs`. Er vergleicht die Noten des Songs mit einer wörtlichen Kopie von `scheduleBar` in `test/fixtures/legacy-bar.js` für alle Spielweisen, mehrere Tempi und Swing-Werte. Die Kopie bleibt als Referenz, wenn `sequencer.js` in Phase 3 entfällt.
 
 ### 8.2 Stil „Deep House“
 
@@ -315,7 +327,7 @@ Der Klang von Deep House ist Geschmackssache und wird in Runden mit dem Nutzer a
 
 - Ein Song ist reines JSON ohne Funktionen und ohne Verweise auf Laufzeitobjekte.
 - Zeiten stehen in Vierteln ab Songanfang oder ab Pattern-Anfang, als Kommazahl. Das Tempo lässt sich dadurch ändern, ohne den Song neu zu erzeugen.
-- Swing ist eine Eigenschaft des Tempos. Die Engine wendet ihn beim Abspielen auf die Achtel zwischen den Schlägen an, wie heute.
+- Swing ist eine Eigenschaft des Tempos. Die Engine wendet ihn beim Abspielen auf die Achtel zwischen den Schlägen an, wie heute. Genau: Liegt die Zeit einer Note auf die nächste Achtel gerundet zwischen zwei Schlägen (`Math.round(t*2)` ist ungerade), kommt sie um `swing/100 × Viertel/6` später. Das rechnet `core/time.js`.
 - Wiederholungen werden nicht ausgeschrieben. Noten stehen in Patterns, Spuren setzen Patterns als Clips auf die Zeitachse.
 - Der Song enthält die Mixer-Einstellungen. Er ist die einzige Quelle für das, was die Engine spielt.
 
@@ -410,7 +422,7 @@ tempo/swing
 channel/<kanal>/gain | pan | mute | solo
 channel/<kanal>/send/<ziel>
 channel/<kanal>/insert/<insert>/<parameter>
-return/<effektspur>/gain
+return/<effektspur>/gain | mute
 return/<effektspur>/insert/<insert>/<parameter>
 master/gain
 master/insert/<insert>/<parameter>
@@ -428,7 +440,7 @@ track/<spur>/instrument/<parameter>
 
 ### 9.6 Formatprüfung
 
-`core/format.js` exportiert `checkSong(song)` und `checkChords(progression)`. Sie liefern eine Liste verständlicher Fehler, zum Beispiel „Spur ‚stabs‘ verweist auf unbekanntes Pattern ‚stabB‘“. Geprüft werden Pflichtfelder, Typen, Wertebereiche und Verweise (Pattern, Kanal, Send-Ziel, Automationsadresse). Die Prüfung läuft in Node und wird in den Tests auf jeden Generator angewendet.
+`core/format.js` exportiert `checkSong(song)`, `checkChords(progression)` und `checkAddress(song, address)`. Sie liefern eine Liste verständlicher Fehler, zum Beispiel „Spur ‚stabs‘ verweist auf unbekanntes Pattern ‚stabB‘“. Geprüft werden Pflichtfelder, Typen, Wertebereiche und Verweise (Pattern, Kanal, Send-Ziel, Automationsadresse). Die Prüfung läuft in Node und wird in den Tests auf jeden Generator angewendet.
 
 ## 10. Engine
 
@@ -481,7 +493,7 @@ const rhodes = {
 ```
 
 - **F-I1** Ein Instrument kennt nur den `AudioContext` und seinen Ausgang. Es weiß nichts von Takten, Songs oder dem Mixer.
-- **F-I2** Die heutigen Klänge werden zu den Instrumenten `rhodes`, `bass` und `drums` (Kick, Hi-Hat, Rim) mit unveränderter Synthese. Tiefpass und Tremolo des Rhodes wandern als Effekte in den Kanal.
+- **F-I2** Die heutigen Klänge werden zu den Instrumenten `rhodes`, `bass` und `drums` (Kick, Hi-Hat, Rim) mit unveränderter Synthese. Tiefpass und Tremolo des Rhodes wandern als Effekte in den Kanal. Jedes Instrument hat einen Parameter `level` (linear, Standard 1) für seinen Grundpegel.
 - **F-I3** Jedes Instrument begrenzt die Zahl gleichzeitiger Stimmen und beendet bei Überschreitung die älteste.
 - **F-I4** Zufall im Klang selbst (leichte Verstimmung des Rhodes, Startpunkt im Rauschen) bleibt im Instrument und steht nicht im Song.
 
