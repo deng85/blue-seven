@@ -28,10 +28,9 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/styles.css` | Gestaltung |
 | `src/chords/jazzy.js` | Akkord-Generator „Jazzy“: Akkordpool, Bewertung, Stimmführung. Liefert Akkordfolgen im Format `blueseven.chords` (ohne DOM, in Node testbar) |
 | `src/app/modules.js` | Die eine Stelle, an der steht, welche Module die App anbietet |
-| `src/app/state.js` | Zustand `S`, Speichern in `localStorage` |
+| `src/app/state.js` | Zustand `S`, aktuelle Akkordfolge, Speichern in `localStorage` |
+| `src/app/player.js` | Baut aus Folge und Einstellungen den Song, Play/Stopp, Anhören, laufender Akkord |
 | `src/app/ui.js` | Kacheln, Klaviatur, Regler |
-| `src/audio.js` | Rhodes, Bass, Drums (Web Audio) |
-| `src/sequencer.js` | Takt-Scheduler, Start/Stopp |
 | `src/app/main.js` | Event-Handler und Start |
 | `src/core/registry.js` | Verzeichnis der Module (Akkord-Generatoren, Stile, Instrumente, Effekte) |
 | `src/core/params.js` | Gemeinsame Parameterbeschreibung: prüfen, Standardwerte, begrenzen |
@@ -42,8 +41,13 @@ Der Quelltext liegt in `src/`, aufgeteilt nach Aufgaben:
 | `src/core/gain.js` | Reglerwert 0 bis 100 in linearen Pegel und zurück |
 | `src/core/voicing.js` | Stimmführung für Akkordfolgen ohne Lage |
 | `src/styles/jazzy-beats.js` | Stil „Jazzy Beats“: baut aus einer Akkordfolge einen Song als JSON |
+| `src/engine/engine.js` | Spielt jeden gültigen Song ab: Ablauf mit Vorausschau, Werte setzen, Anhören, Position |
+| `src/engine/mixer.js` | Kanäle mit Inserts, Fader, Panorama, Mute, Solo und Sends, Effektspuren, Summe |
+| `src/engine/timeline.js` | Welche Noten in einem Zeitraum liegen, Aufbau eines Songs (ohne Web Audio, in Node testbar) |
+| `src/instruments/` | Rhodes, Bass, Drums mit der bisherigen Klangerzeugung, `voices.js` begrenzt die Stimmen |
+| `src/effects/` | Filter, Tremolo, Hall, Kompressor |
 
-Die App holt sich Akkordfolgen über die Registry vom Akkord-Generator und arbeitet mit dem Format `blueseven.chords` weiter. Der Stil Jazzy Beats kann daraus schon einen Song im Format `blueseven.song` erzeugen. Die App spielt aber bis Phase 3 noch über den bisherigen Ablauf und benutzt den Song noch nicht. `audio.js` und `sequencer.js` liegen übergangsweise noch direkt in `src/` und werden in Phase 3 des Pflichtenhefts zu Instrumenten, Effekten und Engine. Welcher Ordner aus welchem importieren darf, prüft ein Test.
+Die App holt sich Akkordfolgen über die Registry vom Akkord-Generator und arbeitet mit dem Format `blueseven.chords` weiter. Der Stil Jazzy Beats macht daraus einen Song im Format `blueseven.song`, und die Engine spielt diesen Song ab. Instrumente und Effekte bekommt die Engine nur über die Registry. Bei jeder Änderung (neue Folge, Tonart, Spielweise, Tempo) baut die App den Song neu und gibt ihn der Engine, die ihn ab dem nächsten Takt spielt. Welcher Ordner aus welchem importieren darf, prüft ein Test.
 
 Die Dateien in `src/` sind ES-Module. `node build.mjs` (oder `npm run build`) führt sie zu einem einzigen Inline-Skript zusammen und setzt daraus wieder die einzelne `index.html` im Wurzelordner zusammen. Die gebaute Datei enthält keine `import`-Anweisungen und lädt nichts nach. Die gebaute Datei ist eingecheckt, damit sie per Doppelklick und über GitHub Pages läuft. Nach jeder Änderung in `src/` also neu bauen und `index.html` mit committen.
 
@@ -56,7 +60,7 @@ export {c, d};                     // nur eine Liste von Namen, am Dateiende
 
 Nicht erlaubt sind `export default`, `export const`, `import * as`, Umbenennen mit `as`, `import()` und Importe im Kreis. Exportierte Namen müssen `const` oder `function` sein und dürfen nicht neu zugewiesen werden. Bei Verstößen bricht der Build mit einer Meldung ab.
 
-`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert), den Build und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
+`npm test` prüft die Harmonielogik (inklusive Referenzfolgen mit festem Zufallswert), die Formate, den Stil Jazzy Beats, die Engine mit einem nachgebauten AudioContext (`test/fixtures/fake-audio.js`), den Build und ob `index.html` zum Stand in `src/` passt. Es braucht nur Node 18 oder neuer, keine Pakete.
 
 ## Ausblick
 

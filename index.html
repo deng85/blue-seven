@@ -177,7 +177,10 @@ const MODES=['dur','moll'];
 function useSharps(key,mode){return [7,2,9,4,11,6].includes(mode==='dur'?key:(key+3)%12);}
 // Name einer Tonklasse (0 bis 11) in der Schreibweise der Tonart.
 function noteName(pc,key,mode){return (useSharps(key,mode)?NOTE_SHARP:NOTE_FLAT)[((pc%12)+12)%12];}
-return {NOTE_FLAT,NOTE_SHARP,MODES,useSharps,noteName};
+
+// Frequenz einer MIDI-Note in Hertz (69 = A4 = 440 Hz).
+const midiToHz=m=>440*Math.pow(2,(m-69)/12);
+return {NOTE_FLAT,NOTE_SHARP,MODES,useSharps,noteName,midiToHz};
 })();
 
 /* ---------- core/params.js ---------- */
@@ -768,7 +771,7 @@ return {voiceChords};
 const __mod6=(function(){
 /* ================= Pegel ================= */
 /* Die Regler der Oberfläche gehen von 0 bis 100. Im Song steht der lineare Pegel. Umgerechnet wird mit
-   dem Exponenten 1,6, damit der Regler sich im unteren Bereich feiner anfühlt (wie bisher in audio.js). */
+   dem Exponenten 1,6, damit der Regler sich im unteren Bereich feiner anfühlt (wie früher in audio.js). */
 const faderToGain=v=>Math.pow(Math.min(100,Math.max(0,v))/100,1.6);
 const gainToFader=g=>100*Math.pow(Math.max(0,g),1/1.6);
 return {faderToGain,gainToFader};
@@ -783,7 +786,8 @@ const {voiceChords}=__mod5;
 const {faderToGain}=__mod6;
 /* ================= Stil „Jazzy Beats“ ================= */
 /* Baut aus einer beliebigen Akkordfolge einen Loop mit Rhodes, Bass und Drums, als Song-JSON.
-   Noten, Längen und Anschläge entsprechen dem ursprünglichen Takt-Ablauf (scheduleBar in sequencer.js).
+   Noten, Längen und Anschläge entsprechen dem ursprünglichen Takt-Ablauf (scheduleBar im früheren sequencer.js,
+   als Referenz in test/fixtures/legacy-bar.js).
    Der Stil kennt keinen Akkord-Generator. Er liest von der Folge nur key, mode, root, tones, duration,
    voicing und bass. */
 
@@ -852,7 +856,7 @@ function drumBar(){
   return out.sort((a,b)=>a.t-b.t||a.p-b.p);
 }
 
-// Mixer wie im bisherigen Signalweg (audio.js).
+// Mixer wie im früheren Signalweg (audio.js bis Phase 2).
 function mixer(){
   return {
     channels:[
@@ -931,29 +935,319 @@ const jazzyBeats={
 return {jazzyBeats,arpOrder};
 })();
 
-/* ---------- app/modules.js ---------- */
+/* ---------- instruments/voices.js ---------- */
 const __mod8=(function(){
+/* ================= Stimmenverwaltung für Instrumente ================= */
+/* Merkt sich alle geplanten und klingenden Stimmen eines Instruments. Damit lassen sie sich beim Stopp
+   beenden, und bei zu vielen gleichzeitigen Stimmen wird die älteste ausgeblendet (F-I3). */
+
+function createVoices(limit){
+  let list=[];   // {start, end, gain (AudioParam), sources}
+  // Eine Stimme ausblenden, die bei time noch klingt.
+  function steal(v,time){
+    v.gain.cancelScheduledValues(time);
+    v.gain.setTargetAtTime(0,time,.005);
+    for(const s of v.sources){try{s.stop(time+.05);}catch(e){}}
+    v.end=time+.05;
+  }
+  return {
+    add(now,start,end,gain,sources){
+      list=list.filter(v=>v.end>now);
+      const active=list.filter(v=>v.start<=start&&v.end>start);
+      if(active.length>=limit)steal(active.reduce((a,b)=>b.start<a.start?b:a),start);
+      list.push({start,end,gain,sources});
+    },
+    // Alle Stimmen sofort beenden, auch die schon geplanten.
+    stopAll(){
+      for(const v of list)for(const s of v.sources){try{s.stop();}catch(e){}}
+      list=[];
+    },
+    count:()=>list.length
+  };
+}
+return {createVoices};
+})();
+
+/* ---------- instruments/rhodes.js ---------- */
+const __mod9=(function(){
+const {midiToHz}=__mod0;
+const {createVoices}=__mod8;
+/* ================= Instrument „Rhodes“ ================= */
+/* Sinus-Träger, ein Modulator für den „Bark“, ein hoher für den Glockenanschlag der Tine.
+   Die Klangerzeugung ist unverändert aus dem früheren audio.js übernommen. */
+
+
+
+const rhodes={
+  type:'rhodes',
+  name:'Rhodes',
+  params:[{id:'level',name:'Pegel',type:'number',min:0,max:2,step:.01,default:1}],
+  create(ac,params){
+    const out=ac.createGain();out.gain.value=params.level;
+    const voices=createVoices(24);
+    function osc(type,f,t,end,list){const o=ac.createOscillator();o.type=type;o.frequency.value=f;o.start(t);o.stop(end);list.push(o);return o;}
+    return {
+      output:out,
+      // note = {p, v}, t in AudioContext-Zeit, dur in Sekunden
+      play(note,t,dur){
+        const vel=note.v,f=midiToHz(note.p),end=t+dur+.45,ks=Math.pow(Math.min(1,300/f),.6),src=[];
+        const car=osc('sine',f,t,end,src);car.detune.value=(Math.random()-.5)*7;
+        const mod=osc('sine',f,t,end,src),mg=ac.createGain(),idx=f*(.3+1.5*vel)*ks;
+        mg.gain.setValueAtTime(idx,t);mg.gain.setTargetAtTime(idx*.2,t,.28);mod.connect(mg);mg.connect(car.frequency);
+        const tine=osc('sine',f*14,t,t+.4,src),tg=ac.createGain();
+        tg.gain.setValueAtTime(f*.7*vel*ks,t);tg.gain.setTargetAtTime(0,t,.03);tine.connect(tg);tg.connect(car.frequency);
+        const g=ac.createGain(),peak=.17*vel;
+        g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(peak,t+.006);g.gain.setTargetAtTime(peak*.22,t+.006,1.1);g.gain.setTargetAtTime(0,t+dur,.09);
+        car.connect(g);g.connect(out);
+        voices.add(ac.currentTime,t,end,g.gain,src);
+      },
+      setParam(id,v,time){if(id==='level')out.gain.setTargetAtTime(v,time,.02);},
+      stopAll(){voices.stopAll();},
+      dispose(){voices.stopAll();out.disconnect();}
+    };
+  }
+};
+return {rhodes};
+})();
+
+/* ---------- instruments/bass.js ---------- */
+const __mod10=(function(){
+const {midiToHz}=__mod0;
+const {createVoices}=__mod8;
+/* ================= Instrument „Bass“ ================= */
+/* Dreieck plus etwas Sägezahn durch einen Tiefpass. Unverändert aus dem früheren audio.js übernommen. */
+
+
+
+const bass={
+  type:'bass',
+  name:'Bass',
+  params:[{id:'level',name:'Pegel',type:'number',min:0,max:2,step:.01,default:1}],
+  create(ac,params){
+    const out=ac.createGain();out.gain.value=params.level;
+    const voices=createVoices(8);
+    function osc(type,f,t,end,list){const o=ac.createOscillator();o.type=type;o.frequency.value=f;o.start(t);o.stop(end);list.push(o);return o;}
+    return {
+      output:out,
+      play(note,t,dur){
+        const vel=note.v,f=midiToHz(note.p),end=t+dur+.3,g=ac.createGain(),lp=ac.createBiquadFilter(),src=[];lp.type='lowpass';lp.frequency.value=650;
+        const a=osc('triangle',f,t,end,src),b=osc('sawtooth',f,t,end,src),bg=ac.createGain();bg.gain.value=.22;
+        a.connect(lp);b.connect(bg);bg.connect(lp);lp.connect(g);
+        g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.5*vel,t+.012);g.gain.setTargetAtTime(.32*vel,t+.012,.3);g.gain.setTargetAtTime(0,t+dur,.05);
+        g.connect(out);
+        voices.add(ac.currentTime,t,end,g.gain,src);
+      },
+      setParam(id,v,time){if(id==='level')out.gain.setTargetAtTime(v,time,.02);},
+      stopAll(){voices.stopAll();},
+      dispose(){voices.stopAll();out.disconnect();}
+    };
+  }
+};
+return {bass};
+})();
+
+/* ---------- instruments/drums.js ---------- */
+const __mod11=(function(){
+const {createVoices}=__mod8;
+/* ================= Instrument „Drums“ ================= */
+/* Kick, Rim und Hi-Hat aus Sinus und gefiltertem Rauschen. Unverändert aus dem früheren audio.js übernommen.
+   Welcher Klang spielt, bestimmt die Tonhöhe nach General MIDI: 36 Kick, 37 Rim, 42 Hi-Hat. */
+
+
+const KICK=36,RIM=37,HAT=42;
+
+const drums={
+  type:'drums',
+  name:'Drums',
+  params:[{id:'level',name:'Pegel',type:'number',min:0,max:2,step:.01,default:1}],
+  create(ac,params){
+    const out=ac.createGain();out.gain.value=params.level;
+    const voices=createVoices(16);
+    const noiseBuf=ac.createBuffer(1,ac.sampleRate*.5,ac.sampleRate);
+    const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+    function noise(t,len,type,freq,q,gain,src){
+      const s=ac.createBufferSource(),fl=ac.createBiquadFilter(),g=ac.createGain();
+      s.buffer=noiseBuf;fl.type=type;fl.frequency.value=freq;fl.Q.value=q;
+      g.gain.setValueAtTime(gain,t);g.gain.exponentialRampToValueAtTime(.0008,t+len);
+      s.connect(fl);fl.connect(g);g.connect(out);s.start(t,Math.random()*.3);s.stop(t+len+.02);src.push(s);
+      return g;
+    }
+    function osc(type,f,t,end,src){const o=ac.createOscillator();o.type=type;o.frequency.value=f;o.start(t);o.stop(end);src.push(o);return o;}
+    function kick(t,vel){
+      const src=[],o=osc('sine',130,t,t+.32,src),g=ac.createGain();
+      o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(48,t+.11);
+      g.gain.setValueAtTime(.9*vel,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(out);
+      noise(t,.02,'lowpass',1800,.5,.25*vel,src);
+      voices.add(ac.currentTime,t,t+.32,g.gain,src);
+    }
+    function hat(t,vel){const src=[],g=noise(t,.045,'highpass',7500,.8,.22*vel,src);voices.add(ac.currentTime,t,t+.065,g.gain,src);}
+    function rim(t,vel){
+      const src=[],g0=noise(t,.07,'bandpass',1900,1.4,.5*vel,src);
+      const o=osc('triangle',420,t,t+.06,src),g=ac.createGain();g.gain.setValueAtTime(.22*vel,t);g.gain.exponentialRampToValueAtTime(.001,t+.05);o.connect(g);g.connect(out);
+      voices.add(ac.currentTime,t,t+.09,g0.gain,src);
+    }
+    return {
+      output:out,
+      play(note,t){
+        if(note.p===KICK)kick(t,note.v);
+        else if(note.p===HAT)hat(t,note.v);
+        else if(note.p===RIM)rim(t,note.v);
+      },
+      setParam(id,v,time){if(id==='level')out.gain.setTargetAtTime(v,time,.02);},
+      stopAll(){voices.stopAll();},
+      dispose(){voices.stopAll();out.disconnect();}
+    };
+  }
+};
+return {drums};
+})();
+
+/* ---------- effects/filter.js ---------- */
+const __mod12=(function(){
+/* ================= Effekt „Filter“ ================= */
+const filter={
+  type:'filter',
+  name:'Filter',
+  params:[
+    {id:'mode',name:'Art',type:'enum',default:'lowpass',
+      options:[{value:'lowpass',name:'Tiefpass'},{value:'highpass',name:'Hochpass'},{value:'bandpass',name:'Bandpass'}]},
+    {id:'frequency',name:'Grenzfrequenz',type:'number',min:20,max:20000,step:1,default:3600,unit:'Hz',curve:'exp'},
+    {id:'q',name:'Güte',type:'number',min:.1,max:20,default:.7,curve:'exp'}
+  ],
+  create(ac,p){
+    const f=ac.createBiquadFilter();f.type=p.mode;f.frequency.value=p.frequency;f.Q.value=p.q;
+    return {
+      input:f,output:f,
+      setParam(id,v,t){
+        if(id==='mode')f.type=v;
+        else if(id==='frequency')f.frequency.setTargetAtTime(v,t,.02);
+        else if(id==='q')f.Q.setTargetAtTime(v,t,.02);
+      },
+      dispose(){f.disconnect();}
+    };
+  }
+};
+return {filter};
+})();
+
+/* ---------- effects/tremolo.js ---------- */
+const __mod13=(function(){
+/* ================= Effekt „Tremolo“ ================= */
+/* Das typische Rhodes-Tremolo: Der Klang wandert zwischen links und rechts.
+   Ohne StereoPanner (sehr alte Browser) wird der Effekt durchgereicht, wie bisher. */
+const tremolo={
+  type:'tremolo',
+  name:'Tremolo',
+  params:[
+    {id:'rate',name:'Tempo',type:'number',min:.1,max:20,default:4.4,unit:'Hz',curve:'exp'},
+    {id:'depth',name:'Tiefe',type:'number',min:0,max:1,default:.45}
+  ],
+  create(ac,p){
+    if(!ac.createStereoPanner){const g=ac.createGain();return {input:g,output:g,setParam(){},dispose(){g.disconnect();}};}
+    const pan=ac.createStereoPanner(),lfo=ac.createOscillator(),lg=ac.createGain();
+    lfo.frequency.value=p.rate;lg.gain.value=p.depth;lfo.connect(lg);lg.connect(pan.pan);lfo.start();
+    return {
+      input:pan,output:pan,
+      setParam(id,v,t){
+        if(id==='rate')lfo.frequency.setTargetAtTime(v,t,.05);
+        else if(id==='depth')lg.gain.setTargetAtTime(v,t,.05);
+      },
+      dispose(){try{lfo.stop();}catch(e){}pan.disconnect();}
+    };
+  }
+};
+return {tremolo};
+})();
+
+/* ---------- effects/reverb.js ---------- */
+const __mod14=(function(){
+/* ================= Effekt „Hall“ ================= */
+/* Faltungshall mit einer erzeugten Impulsantwort aus abklingendem Rauschen, wie bisher. */
+function impulse(ac,sec){
+  const n=Math.floor(ac.sampleRate*sec),b=ac.createBuffer(2,n,ac.sampleRate);
+  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.6);}
+  return b;
+}
+const reverb={
+  type:'reverb',
+  name:'Hall',
+  params:[{id:'seconds',name:'Dauer',type:'number',min:.2,max:6,step:.1,default:1.5,unit:'s'}],
+  create(ac,p){
+    const rev=ac.createConvolver();rev.buffer=impulse(ac,p.seconds);
+    return {
+      input:rev,output:rev,
+      setParam(id,v){if(id==='seconds')rev.buffer=impulse(ac,v);},
+      dispose(){rev.disconnect();}
+    };
+  }
+};
+return {reverb};
+})();
+
+/* ---------- effects/compressor.js ---------- */
+const __mod15=(function(){
+/* ================= Effekt „Kompressor“ ================= */
+const compressor={
+  type:'compressor',
+  name:'Kompressor',
+  params:[
+    {id:'threshold',name:'Schwelle',type:'number',min:-60,max:0,step:1,default:-16,unit:'dB'},
+    {id:'ratio',name:'Verhältnis',type:'number',min:1,max:20,step:.5,default:4}
+  ],
+  create(ac,p){
+    const c=ac.createDynamicsCompressor();c.threshold.value=p.threshold;c.ratio.value=p.ratio;
+    return {
+      input:c,output:c,
+      setParam(id,v,t){
+        if(id==='threshold')c.threshold.setTargetAtTime(v,t,.02);
+        else if(id==='ratio')c.ratio.setTargetAtTime(v,t,.02);
+      },
+      dispose(){c.disconnect();}
+    };
+  }
+};
+return {compressor};
+})();
+
+/* ---------- app/modules.js ---------- */
+const __mod16=(function(){
 const {createRegistry}=__mod2;
 const {jazzy}=__mod4;
 const {jazzyBeats}=__mod7;
+const {rhodes}=__mod9;
+const {bass}=__mod10;
+const {drums}=__mod11;
+const {filter}=__mod12;
+const {tremolo}=__mod13;
+const {reverb}=__mod14;
+const {compressor}=__mod15;
 /* ================= Module der App ================= */
 /* Die eine Stelle, an der steht, welche Module die App anbietet. */
 
 
 
 
+
+
+
+
+
+
+
 const registry=createRegistry({
   chords:[jazzy],
-  styles:[jazzyBeats]
+  styles:[jazzyBeats],
+  instruments:[rhodes,bass,drums],
+  effects:[filter,tremolo,reverb,compressor]
 });
 return {registry};
 })();
 
 /* ---------- app/state.js ---------- */
-const __mod9=(function(){
+const __mod17=(function(){
 const {MODES,noteName}=__mod0;
 const {normalize}=__mod1;
-const {registry}=__mod8;
+const {registry}=__mod16;
 /* ================= Zustand ================= */
 
 
@@ -964,6 +1258,7 @@ const DEF={key:0,mode:'dur',n:4,bpm:84,swing:55,spice:35,feel:'comp',nine:1,volR
 // Exportierte Namen werden nie neu zugewiesen, nur ihr Inhalt ändert sich. So sehen alle Module denselben Stand.
 // chords sind die Akkorde der aktuellen Folge im Format blueseven.chords, recent die zuletzt erzeugten Folgen.
 const S=Object.assign({},DEF),favs=[],hist=[],recent=[],chords=[];
+let current=null;   // die ganze aktuelle Folge, nur über progression() lesbar
 const run={playing:false,active:-1};   // läuft gerade etwas, und welcher Akkord ist dran
 const LS='blueseven.v1';
 
@@ -997,16 +1292,18 @@ function load(d){
 const keyLabel=(key,mode)=>noteName(key,key,mode)+(mode==='dur'?'-Dur':'-Moll');
 const keyName=()=>keyLabel(S.key,S.mode);
 // Übernimmt eine Akkordfolge als aktuelle Folge.
-function setProg(p){chords.length=0;if(p)chords.push(...p.chords);}
+function setProg(p){current=p||null;chords.length=0;if(p)chords.push(...p.chords);}
+// Die aktuelle Folge im Format blueseven.chords, oder null.
+const progression=()=>current;
 // Die aktuelle Folge neu ausgeben, zum Beispiel nach Tonartwechsel oder None an/aus.
 function revoice(){setProg(fromIds(S.loop,S.key,S.mode));}
 function pushHist(){if(S.loop.length){hist.push({key:S.key,mode:S.mode,n:S.n,loop:S.loop.slice()});if(hist.length>30)hist.shift();}}
-return {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,revoice,pushHist};
+return {$,S,favs,hist,recent,chords,run,chordGen,genParams,fromIds,idsOf,bassNote,save,load,keyLabel,keyName,setProg,progression,revoice,pushHist};
 })();
 
 /* ---------- app/ui.js ---------- */
-const __mod10=(function(){
-const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName}=__mod9;
+const __mod18=(function(){
+const {$,S,favs,hist,chords,run,fromIds,bassNote,keyLabel,keyName}=__mod17;
 /* ================= Oberfläche ================= */
 
 
@@ -1058,19 +1355,459 @@ function renderFavs(){
 return {buildKeys,showNotes,setActive,render,renderFavs};
 })();
 
-/* ---------- audio.js ---------- */
-const __mod11=(function(){
-const {$,S}=__mod9;
-/* ================= Klang ================= */
+/* ---------- engine/timeline.js ---------- */
+const __mod19=(function(){
+/* ================= Zeitachse eines Songs ================= */
+/* Reine Funktionen ohne Web Audio: Welche Noten liegen in einem Zeitraum, und wie sieht der Song
+   in seiner Struktur aus. Laufen in Node und werden dort getestet. */
 
-
-let ctx,gate,rBus,bBus,dBus,noiseBuf,live=[],killTimer=0;
-const vol=v=>Math.pow(v/100,1.6);
-function impulse(sec){
-  const n=Math.floor(ctx.sampleRate*sec),b=ctx.createBuffer(2,n,ctx.sampleRate);
-  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.6);}
-  return b;
+// Alle Noten mit Beginn in [from, to), in Vierteln ab Songanfang. Wiederholt Patterns innerhalb ihrer Clips.
+// Ergebnis: [{track, beat, d, p, v, o}], in der Reihenfolge der Spuren, Clips und Pattern-Noten.
+function notesBetween(song,from,to){
+  const out=[];
+  for(const tr of song.tracks){
+    for(const c of tr.clips){
+      const pt=song.patterns[c.pattern];
+      if(!pt||!pt.notes.length)continue;
+      const cs=c.start,ce=c.start+c.length;
+      if(ce<=from||cs>=to)continue;
+      const first=Math.max(0,Math.floor((from-cs)/pt.length)),last=Math.ceil((Math.min(to,ce)-cs)/pt.length);
+      for(let r=first;r<last;r++)for(const n of pt.notes){
+        const local=r*pt.length+n.t;
+        if(local>=c.length)continue;
+        const beat=cs+local;
+        if(beat<from||beat>=to)continue;
+        out.push({track:tr.id,beat,d:n.d,p:n.p+(c.transpose||0),v:n.v,o:n.o||0});
+      }
+    }
+  }
+  return out;
 }
+
+// Ein Schlüssel für den Aufbau eines Songs: Spuren mit Instrument und Kanal, Kanäle, Effektspuren und
+// Summe mit ihren Effekten und Sends. Bei gleichem Schlüssel kann die Engine ihren Signalweg behalten
+// und muss nur Werte nachführen.
+function structureKey(song){
+  const fx=list=>(list||[]).map(i=>[i.id,i.type]);
+  const m=song.mixer;
+  return JSON.stringify({
+    tracks:song.tracks.map(t=>[t.id,t.instrument.type,t.channel]),
+    channels:m.channels.map(c=>[c.id,fx(c.inserts),(c.sends||[]).map(s=>s.to)]),
+    returns:m.returns.map(r=>[r.id,fx(r.inserts)]),
+    master:fx(m.master.inserts)
+  });
+}
+return {notesBetween,structureKey};
+})();
+
+/* ---------- engine/mixer.js ---------- */
+const __mod20=(function(){
+const {normalize,normalizeValue}=__mod1;
+/* ================= Mixer ================= */
+/* Baut aus song.mixer den Signalweg und führt Werte nach.
+
+     Kanal:      Eingang → Inserts → Fader → Panorama → Mute ─┬→ Summe
+                                                              └→ Sends → Effektspuren
+     Effektspur: Eingang → Inserts → Fader → Mute → Summe
+     Summe:      Eingang → Inserts → Fader → Ausgang
+
+   Der Fader eines Kanals arbeitet immer in Stereo. So bleibt ein Mono-Instrument bei Panorama 0
+   genauso laut wie bisher, statt durch den StereoPanner 3 dB zu verlieren. */
+
+
+const SMOOTH=.02;   // Glättung für Pegel und Panorama in Sekunden, wie bisher bei den Lautstärkereglern
+const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,+v||0));
+
+// Ein Effekt im Signalweg, mit Umgehung (bypass) ohne Knacken. Unbekannte Effekte werden durchgereicht.
+function createInsert(ac,spec,registry,warn,where){
+  const input=ac.createGain(),output=ac.createGain(),wet=ac.createGain(),dry=ac.createGain();
+  const mod=registry.get('effects',spec.type);
+  let fx=null,params={};
+  if(mod){params=normalize(mod.params||[],spec.params);fx=mod.create(ac,params);input.connect(fx.input);fx.output.connect(wet);}
+  else warn(`${where}: Den Effekt „${spec.type}“ gibt es nicht. Er wird übersprungen.`);
+  input.connect(dry);wet.connect(output);dry.connect(output);
+  const route=(bypass,t)=>{
+    const on=!!fx&&!bypass;
+    if(t===undefined){wet.gain.value=on?1:0;dry.gain.value=on?0:1;}
+    else{wet.gain.setTargetAtTime(on?1:0,t,.01);dry.gain.setTargetAtTime(on?0:1,t,.01);}
+  };
+  route(!!spec.bypass);
+  return {
+    input,output,
+    setBypass:(b,t)=>route(!!b,t),
+    setParam(id,v,t){
+      const p=fx&&(mod.params||[]).find(x=>x.id===id);
+      if(!p)return false;
+      fx.setParam(id,normalizeValue(p,v),t);return true;
+    },
+    dispose(){if(fx&&fx.dispose)fx.dispose();input.disconnect();output.disconnect();}
+  };
+}
+function createChain(ac,list,registry,warn,where,input){
+  let node=input;const map=new Map();
+  for(const spec of list||[]){const x=createInsert(ac,spec,registry,warn,`${where}, Effekt „${spec.id}“`);node.connect(x.input);node=x.output;map.set(spec.id,x);}
+  return {output:node,inserts:map};
+}
+
+function buildMixer(ac,mx,registry,warn){
+  const nodes=[],track=n=>(nodes.push(n),n);
+  // Summe
+  const masterIn=track(ac.createGain());
+  const mc=createChain(ac,mx.master.inserts,registry,warn,'Summe',masterIn);
+  const masterOut=track(ac.createGain());masterOut.gain.value=mx.master.gain;mc.output.connect(masterOut);
+  const master={inserts:mc.inserts,fader:masterOut};
+  // Effektspuren
+  const returns=new Map();
+  for(const r of mx.returns){
+    const input=track(ac.createGain()),c=createChain(ac,r.inserts,registry,warn,`Effektspur „${r.name}“`,input);
+    const fader=track(ac.createGain()),mute=track(ac.createGain());
+    fader.gain.value=r.gain;mute.gain.value=r.mute?0:1;
+    c.output.connect(fader);fader.connect(mute);mute.connect(masterIn);
+    returns.set(r.id,{input,inserts:c.inserts,fader,mute});
+  }
+  // Kanäle
+  const channels=new Map(),state=new Map();
+  for(const ch of mx.channels){
+    const input=track(ac.createGain()),c=createChain(ac,ch.inserts,registry,warn,`Kanal „${ch.name}“`,input);
+    const fader=track(ac.createGain());
+    fader.channelCount=2;fader.channelCountMode='explicit';fader.channelInterpretation='speakers';
+    fader.gain.value=ch.gain;c.output.connect(fader);
+    let out=fader,panner=null;
+    if(ac.createStereoPanner){panner=track(ac.createStereoPanner());panner.pan.value=ch.pan;fader.connect(panner);out=panner;}
+    const mute=track(ac.createGain());out.connect(mute);mute.connect(masterIn);
+    const sends=new Map();
+    for(const s of ch.sends||[]){
+      const ret=returns.get(s.to);if(!ret)continue;
+      const g=track(ac.createGain());g.gain.value=s.gain;mute.connect(g);g.connect(ret.input);sends.set(s.to,g);
+    }
+    channels.set(ch.id,{input,inserts:c.inserts,fader,panner,mute,sends});
+    state.set(ch.id,{mute:!!ch.mute,solo:!!ch.solo});
+  }
+  // Mute und Solo: Ist irgendein Kanal auf Solo, hört man nur die Kanäle mit Solo. Effektspuren bleiben hörbar.
+  function updateMutes(t){
+    const anySolo=[...state.values()].some(s=>s.solo);
+    for(const [id,ch] of channels){
+      const s=state.get(id),on=!s.mute&&(!anySolo||s.solo)?1:0;
+      if(t===undefined)ch.mute.gain.value=on;else ch.mute.gain.setTargetAtTime(on,t,.01);
+    }
+  }
+  updateMutes();
+
+  const insertOf=(owner,id)=>owner&&owner.inserts.get(id);
+  // Setzt einen Wert. parts ist die Adresse ohne Wert, zum Beispiel ['channel','rhodes','gain'].
+  // Liefert false, wenn es das Ziel nicht gibt.
+  function set(parts,value,t){
+    const [kind,id,what,sub,param]=parts;
+    if(kind==='master'){
+      if(id==='gain'){masterOut.gain.setTargetAtTime(clamp(value,0,4),t,SMOOTH);return true;}
+      if(id==='insert'){const x=insertOf(master,what);return !!x&&(sub==='bypass'?(x.setBypass(value,t),true):x.setParam(sub,value,t));}
+      return false;
+    }
+    const owner=kind==='channel'?channels.get(id):kind==='return'?returns.get(id):null;
+    if(!owner)return false;
+    if(what==='gain'){owner.fader.gain.setTargetAtTime(clamp(value,0,4),t,SMOOTH);return true;}
+    if(what==='insert'){const x=insertOf(owner,sub);return !!x&&(param==='bypass'?(x.setBypass(value,t),true):x.setParam(param,value,t));}
+    if(kind==='return'){
+      if(what==='mute'){owner.mute.gain.setTargetAtTime(value?0:1,t,.01);return true;}
+      return false;
+    }
+    if(what==='pan'){if(owner.panner)owner.panner.pan.setTargetAtTime(clamp(value,-1,1),t,SMOOTH);return true;}
+    if(what==='mute'||what==='solo'){state.get(id)[what]=!!value;updateMutes(t);return true;}
+    if(what==='send'){const g=owner.sends.get(sub);if(!g)return false;g.gain.setTargetAtTime(clamp(value,0,4),t,SMOOTH);return true;}
+    return false;
+  }
+  // Führt alle Werte nach, die sich zwischen prev und next unterscheiden. Beide haben denselben Aufbau.
+  function apply(prev,next,t){
+    const differ=(a,b)=>JSON.stringify(a)!==JSON.stringify(b);
+    const chain=(base,a,b)=>(b||[]).forEach((x,i)=>{
+      const y=(a||[])[i]||{};
+      if(!!x.bypass!==!!y.bypass)set([...base,'insert',x.id,'bypass'],x.bypass,t);
+      for(const k in x.params||{})if(differ(x.params[k],(y.params||{})[k]))set([...base,'insert',x.id,k],x.params[k],t);
+    });
+    next.channels.forEach((c,i)=>{
+      const o=prev.channels[i];
+      for(const k of ['gain','pan','mute','solo'])if(c[k]!==o[k])set(['channel',c.id,k],c[k],t);
+      (c.sends||[]).forEach((s,j)=>{if(s.gain!==o.sends[j].gain)set(['channel',c.id,'send',s.to],s.gain,t);});
+      chain(['channel',c.id],o.inserts,c.inserts);
+    });
+    next.returns.forEach((r,i)=>{
+      const o=prev.returns[i];
+      for(const k of ['gain','mute'])if(r[k]!==o[k])set(['return',r.id,k],r[k],t);
+      chain(['return',r.id],o.inserts,r.inserts);
+    });
+    if(next.master.gain!==prev.master.gain)set(['master','gain'],next.master.gain,t);
+    chain(['master'],prev.master.inserts,next.master.inserts);
+  }
+  return {
+    output:masterOut,
+    channelInput:id=>{const c=channels.get(id);return c&&c.input;},
+    set,apply,
+    dispose(){
+      for(const owner of [master,...returns.values(),...channels.values()])for(const x of owner.inserts.values())x.dispose();
+      for(const n of nodes){try{n.disconnect();}catch(e){}}
+    }
+  };
+}
+return {buildMixer};
+})();
+
+/* ---------- engine/engine.js ---------- */
+const __mod21=(function(){
+const {normalize,normalizeValue}=__mod1;
+const {checkSong,checkAddress}=__mod3;
+const {notesBetween,structureKey}=__mod19;
+const {buildMixer}=__mod20;
+/* ================= Engine ================= */
+/* Spielt jeden gültigen Song ab. Kennt weder die Oberfläche noch den App-Zustand, Instrumente und Effekte
+   nur über die Registry.
+
+     const engine=createEngine(registry);
+     engine.init();                    // AudioContext anlegen, nur nach einer Nutzeraktion
+     engine.load(song);                // Song übernehmen (im Lauf: ab dem nächsten Takt)
+     engine.play(); engine.stop();
+     engine.setParam('channel/rhodes/gain',.5);
+     engine.audition([{track:'rhodes',notes:[{p:60,v:.7,s:1.6,o:0}]}]);
+     engine.position();                // {beat, song} oder null
+     engine.on('warning',msg=>…); engine.on('ended',()=>…);
+
+   Geplant wird wie bisher taktweise mit Vorausschau: Alle 50 ms wird jeder Takt geplant, der in den
+   nächsten 0,6 s beginnt. Tempo, Swing und ein neuer Song wirken deshalb ab dem nächsten Takt. */
+
+
+
+
+
+const LOOKAHEAD=.6,TICK_MS=50,START_DELAY=.15,FADE=.015,KILL_MS=90,TAIL_MS=4000;
+
+function createEngine(registry,options){
+  const env=Object.assign({
+    AudioContext:globalThis.AudioContext||globalThis.webkitAudioContext,
+    setInterval:(f,ms)=>setInterval(f,ms),clearInterval:id=>clearInterval(id),
+    setTimeout:(f,ms)=>setTimeout(f,ms),clearTimeout:id=>clearTimeout(id)
+  },options);
+  const listeners={warning:[],ended:[]};
+  const emit=(ev,arg)=>listeners[ev].forEach(f=>f(arg));
+  const warn=msg=>emit('warning',msg);
+
+  let ac=null,gate=null,graph=null,song=null;
+  let playing=false,timer=0,fadeTimer=0,pos=0,nextTime=0,anchors=[],endTime=-1;
+
+  /* ---------- Signalweg ---------- */
+  function buildGraph(s){
+    // Reihenfolge wie bisher: erst die Effekte (Hall), dann die Instrumente (Rauschen der Drums).
+    const mixer=buildMixer(ac,s.mixer,registry,warn);
+    mixer.output.connect(gate);
+    const tracks=new Map();
+    for(const tr of s.tracks){
+      const mod=registry.get('instruments',tr.instrument.type);
+      if(!mod){warn(`Spur „${tr.name}“ bleibt stumm: Das Instrument „${tr.instrument.type}“ gibt es nicht.`);continue;}
+      const inst=mod.create(ac,normalize(mod.params||[],tr.instrument.params));
+      inst.output.connect(mixer.channelInput(tr.channel));
+      tracks.set(tr.id,{inst,mod});
+    }
+    return {
+      key:structureKey(s),mixer,tracks,
+      stopAll(){for(const t of tracks.values())t.inst.stopAll();},
+      dispose(){for(const t of tracks.values())t.inst.dispose();mixer.dispose();}
+    };
+  }
+  // Übernimmt den Song in den Signalweg. Bei gleichem Aufbau werden nur Werte nachgeführt,
+  // sonst wird neu gebaut und der alte Signalweg klingt aus.
+  function attach(next,prev){
+    if(!ac)return;
+    if(graph&&prev&&graph.key===structureKey(next)){
+      const t=ac.currentTime;
+      graph.mixer.apply(prev.mixer,next.mixer,t);
+      next.tracks.forEach((tr,i)=>{
+        const g=graph.tracks.get(tr.id),old=prev.tracks[i].instrument.params||{};
+        if(!g)return;
+        for(const k in tr.instrument.params||{})if(tr.instrument.params[k]!==old[k])setInstrumentParam(g,k,tr.instrument.params[k],t);
+      });
+      return;
+    }
+    const old=graph;
+    graph=buildGraph(next);
+    if(old){
+      if(playing)env.setTimeout(()=>old.dispose(),TAIL_MS);
+      else{old.stopAll();old.dispose();}
+    }
+  }
+  function setInstrumentParam(g,id,value,t){
+    const p=(g.mod.params||[]).find(x=>x.id===id);
+    if(!p)return false;
+    g.inst.setParam(id,normalizeValue(p,value),t);return true;
+  }
+
+  /* ---------- Ablauf ---------- */
+  function scheduleChunk(){
+    const s=song,tp=s.tempo,spb=60/tp.bpm,sw=tp.swing/100*spb/6;
+    const from=pos,to=Math.min(pos+tp.beatsPerBar,s.length),t0=nextTime;
+    for(const n of notesBetween(s,from,to)){
+      const g=graph&&graph.tracks.get(n.track);
+      if(!g)continue;
+      // Wie im bisherigen Ablauf: Achtel zwischen den Schlägen kommen um sw später.
+      const t=t0+(n.beat-from)*spb+(Math.round(n.beat*2)%2?sw:0)+n.o;
+      g.inst.play({p:n.p,v:n.v},t,n.d*spb);
+    }
+    anchors.push({time:t0,beat:from,bpm:tp.bpm,song:s});
+    nextTime=t0+(to-from)*60/tp.bpm;
+    pos=to;
+    if(pos>=s.length-1e-9){
+      if(s.loop)pos=0;
+      else endTime=nextTime;
+    }
+  }
+  function tick(){
+    if(!playing)return;
+    const now=ac.currentTime;
+    while(endTime<0&&nextTime<now+LOOKAHEAD)scheduleChunk();
+    // Takte, die längst vorbei sind, braucht position() nicht mehr, auch wenn die App gerade nicht fragt.
+    while(anchors.length>2&&anchors[1].time<now-1)anchors.shift();
+    if(endTime>=0&&now>=endTime){
+      playing=false;env.clearInterval(timer);
+      emit('ended');
+    }
+  }
+  function silence(){
+    if(graph)graph.stopAll();
+    fadeTimer=0;
+    if(ac){gate.gain.cancelScheduledValues(ac.currentTime);gate.gain.setValueAtTime(1,ac.currentTime);}
+  }
+  function cancelFade(){if(fadeTimer){env.clearTimeout(fadeTimer);silence();}}
+
+  /* ---------- Schnittstelle ---------- */
+  const api={
+    // Legt den AudioContext an. Wirft einen Fehler mit code 'unsupported' oder 'failed'.
+    init(){
+      if(ac){if(ac.state!=='running')ac.resume();return true;}
+      const AC=env.AudioContext;
+      if(!AC){const e=new Error('Web Audio fehlt.');e.code='unsupported';throw e;}
+      try{
+        try{ac=new AC({latencyHint:'playback'});}catch(e){ac=new AC();}
+        gate=ac.createGain();gate.connect(ac.destination);
+        if(song)graph=buildGraph(song);
+        ac.resume();
+        return true;
+      }catch(e){
+        ac=null;graph=null;
+        const err=new Error('Der Ton ließ sich nicht starten: '+e.message);err.code='failed';throw err;
+      }
+    },
+    ready:()=>!!ac,
+    isPlaying:()=>playing,
+    // Übernimmt einen Song. Im Lauf gilt er ab dem nächsten Takt, die Position läuft weiter.
+    load(next){
+      const errors=checkSong(next);
+      if(errors.length)throw new Error('Der Song ist ungültig.\n  '+errors.join('\n  '));
+      const prev=song;
+      song=JSON.parse(JSON.stringify(next));
+      attach(song,prev);
+      if(playing&&pos>=song.length)pos=song.loop?pos%song.length:song.length;
+    },
+    song:()=>song&&JSON.parse(JSON.stringify(song)),
+    play(opts){
+      if(!ac||!song||playing)return false;
+      cancelFade();
+      playing=true;anchors=[];endTime=-1;
+      pos=Math.min(Math.max(0,(opts&&opts.from)||0),song.length);
+      nextTime=ac.currentTime+START_DELAY;
+      tick();timer=env.setInterval(tick,TICK_MS);
+      return true;
+    },
+    stop(){
+      if(!ac)return;
+      playing=false;env.clearInterval(timer);anchors=[];
+      gate.gain.setTargetAtTime(0,ac.currentTime,FADE);
+      if(fadeTimer)env.clearTimeout(fadeTimer);
+      fadeTimer=env.setTimeout(silence,KILL_MS);
+    },
+    // Setzt einen Wert über seine Adresse (Abschnitt 9.4) und schreibt ihn in den Song.
+    setParam(address,value){
+      if(!song)return false;
+      const bad=checkAddress(song,address);
+      if(bad){warn(bad);return false;}
+      const parts=address.split('/'),t=ac?ac.currentTime:0;
+      let ok=true;
+      if(parts[0]==='tempo'){
+        if(typeof value!=='number'||!Number.isFinite(value))return false;
+        song.tempo[parts[1]]=parts[1]==='bpm'?Math.min(400,Math.max(20,value)):Math.min(100,Math.max(0,value));
+        return true;
+      }
+      if(parts[0]==='track'){
+        const tr=song.tracks.find(x=>x.id===parts[1]),g=graph&&graph.tracks.get(parts[1]);
+        if(g)ok=setInstrumentParam(g,parts[3],value,t);
+        if(ok)(tr.instrument.params=tr.instrument.params||{})[parts[3]]=value;
+        return ok;
+      }
+      if(graph)ok=graph.mixer.set(parts,value,t);
+      if(ok)writeMixer(song.mixer,parts,value);
+      return ok;
+    },
+    // Spielt Noten sofort an, auch ohne laufende Wiedergabe. parts: [{track, notes:[{p, v, s, o}]}],
+    // s ist die Dauer und o der Versatz, beides in Sekunden.
+    audition(parts){
+      if(!ac||!graph)return false;
+      cancelFade();
+      const t=ac.currentTime+.03;
+      for(const part of parts){
+        const g=graph.tracks.get(part.track);if(!g)continue;
+        for(const n of part.notes)g.inst.play({p:n.p,v:n.v},t+(n.o||0),n.s);
+      }
+      return true;
+    },
+    // Was gerade zu hören ist, mit Ausgleich der Ausgabelatenz: Position in Vierteln und der Song,
+    // aus dem dieser Takt geplant wurde. null, solange noch nichts klingt.
+    position(){
+      if(!ac||!playing)return null;
+      const now=ac.currentTime-(ac.outputLatency||ac.baseLatency||0);
+      while(anchors.length>1&&anchors[1].time<=now)anchors.shift();
+      const a=anchors[0];
+      if(!a||a.time>now)return null;
+      return {beat:a.beat+(now-a.time)*a.bpm/60,song:a.song};
+    },
+    on(ev,fn){if(listeners[ev])listeners[ev].push(fn);}
+  };
+  return api;
+}
+
+// Schreibt einen Mixer-Wert in den Song, damit der Song immer den gehörten Stand beschreibt (F-P8).
+function writeMixer(mx,parts,value){
+  const [kind,id,what,sub,param]=parts,find=(l,x)=>(l||[]).find(e=>e.id===x);
+  const owner=kind==='master'?mx.master:find(kind==='channel'?mx.channels:mx.returns,id);
+  const prop=kind==='master'?id:what,ins=kind==='master'?what:sub,key=kind==='master'?sub:param;
+  if(prop==='insert'){
+    const x=find(owner.inserts,ins);
+    if(key==='bypass')x.bypass=!!value;else (x.params=x.params||{})[key]=value;
+  }else if(prop==='send'){const s=owner.sends.find(e=>e.to===sub);if(s)s.gain=value;}
+  else owner[prop]=prop==='mute'||prop==='solo'?!!value:value;
+}
+return {createEngine};
+})();
+
+/* ---------- app/player.js ---------- */
+const __mod22=(function(){
+const {$,S,chords,run,progression,bassNote}=__mod17;
+const {setActive,showNotes}=__mod18;
+const {registry}=__mod16;
+const {createEngine}=__mod21;
+const {faderToGain}=__mod6;
+/* ================= Wiedergabe ================= */
+/* Verbindet die Bedienung mit der Engine. Baut aus der aktuellen Folge und den Einstellungen den Song,
+   startet und stoppt, spielt einen Akkord zum Anhören an und zeigt, welcher Akkord gerade klingt.
+   Die Engine selbst kennt die Oberfläche nicht. */
+
+
+
+
+
+
+const engine=createEngine(registry);
+engine.on('warning',msg=>{$('hint').textContent=msg;});
+engine.on('ended',()=>{if(run.playing)stop();});
+
+// Welcher Lautstärkeregler zu welchem Kanal gehört.
+const VOLUMES=[['rhodes','volR'],['bass','volB'],['drums','volD']];
+
 function iosUnmute(){
   // iPhone: ein stummes <audio> schaltet Web Audio auch bei aktivem Stummschalter frei
   const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -1084,158 +1821,84 @@ function iosUnmute(){
     const p=a.play();if(p&&p.catch)p.catch(()=>{});
   }catch(e){}
 }
+// Startet den Ton beim ersten Antippen. Liefert false und zeigt einen Hinweis, wenn das nicht geht.
 function initAudio(){
-  if(ctx){if(ctx.state!=='running')ctx.resume();return true;}
-  const AC=window.AudioContext||window.webkitAudioContext;
-  if(!AC){$('hint').textContent='Dieser Browser kann keinen Ton erzeugen (Web Audio fehlt).';return false;}
-  try{
-    try{ctx=new AC({latencyHint:'playback'});}catch(e){ctx=new AC();}iosUnmute();
-    const comp=ctx.createDynamicsCompressor();comp.threshold.value=-16;comp.ratio.value=4;comp.connect(ctx.destination);
-    gate=ctx.createGain();gate.connect(comp);
-    rBus=ctx.createGain();bBus=ctx.createGain();dBus=ctx.createGain();
-    const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3600;lp.Q.value=.3;rBus.connect(lp);
-    let out=lp;
-    if(ctx.createStereoPanner){                      // das typische Rhodes-Tremolo, wandert zwischen links und rechts
-      const pan=ctx.createStereoPanner(),lfo=ctx.createOscillator(),lg=ctx.createGain();
-      lfo.frequency.value=4.4;lg.gain.value=.45;lfo.connect(lg);lg.connect(pan.pan);lfo.start();lp.connect(pan);out=pan;
-    }
-    out.connect(gate);
-    const rev=ctx.createConvolver(),send=ctx.createGain();rev.buffer=impulse(1.5);send.gain.value=.24;
-    out.connect(send);send.connect(rev);rev.connect(gate);
-    const dsend=ctx.createGain();dsend.gain.value=.06;dBus.connect(dsend);dsend.connect(rev);
-    bBus.connect(gate);dBus.connect(gate);
-    noiseBuf=ctx.createBuffer(1,ctx.sampleRate*.5,ctx.sampleRate);
-    const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
-    setVols();ctx.resume();return true;
-  }catch(e){ctx=null;$('hint').textContent='Der Ton ließ sich nicht starten. Seite neu laden und noch einmal auf Play tippen.';return false;}
-}
-function setVols(){if(!ctx)return;const t=ctx.currentTime;rBus.gain.setTargetAtTime(vol(S.volR)*1.1,t,.02);bBus.gain.setTargetAtTime(vol(S.volB),t,.02);dBus.gain.setTargetAtTime(vol(S.volD)*.9,t,.02);}
-const hz=m=>440*Math.pow(2,(m-69)/12);
-function keep(node,end){live.push([node,end]);}
-function osc(type,f,t,end){const o=ctx.createOscillator();o.type=type;o.frequency.value=f;o.start(t);o.stop(end);keep(o,end);return o;}
-
-/* Rhodes: Sinus-Träger, ein Modulator für den „Bark“, ein hoher für den Glockenanschlag der Tine */
-function rhodes(m,t,dur,vel){
-  const f=hz(m),end=t+dur+.45,ks=Math.pow(Math.min(1,300/f),.6);
-  const car=osc('sine',f,t,end);car.detune.value=(Math.random()-.5)*7;
-  const mod=osc('sine',f,t,end),mg=ctx.createGain(),idx=f*(.3+1.5*vel)*ks;
-  mg.gain.setValueAtTime(idx,t);mg.gain.setTargetAtTime(idx*.2,t,.28);mod.connect(mg);mg.connect(car.frequency);
-  const tine=osc('sine',f*14,t,t+.4),tg=ctx.createGain();
-  tg.gain.setValueAtTime(f*.7*vel*ks,t);tg.gain.setTargetAtTime(0,t,.03);tine.connect(tg);tg.connect(car.frequency);
-  const g=ctx.createGain(),peak=.17*vel;
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(peak,t+.006);g.gain.setTargetAtTime(peak*.22,t+.006,1.1);g.gain.setTargetAtTime(0,t+dur,.09);
-  car.connect(g);g.connect(rBus);
-}
-function bass(m,t,dur,vel){
-  const f=hz(m),end=t+dur+.3,g=ctx.createGain(),lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=650;
-  const a=osc('triangle',f,t,end),b=osc('sawtooth',f,t,end),bg=ctx.createGain();bg.gain.value=.22;
-  a.connect(lp);b.connect(bg);bg.connect(lp);lp.connect(g);
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.5*vel,t+.012);g.gain.setTargetAtTime(.32*vel,t+.012,.3);g.gain.setTargetAtTime(0,t+dur,.05);
-  g.connect(bBus);
-}
-function noise(t,len,type,freq,q,gain){
-  const s=ctx.createBufferSource(),fl=ctx.createBiquadFilter(),g=ctx.createGain();
-  s.buffer=noiseBuf;fl.type=type;fl.frequency.value=freq;fl.Q.value=q;
-  g.gain.setValueAtTime(gain,t);g.gain.exponentialRampToValueAtTime(.0008,t+len);
-  s.connect(fl);fl.connect(g);g.connect(dBus);s.start(t,Math.random()*.3);s.stop(t+len+.02);keep(s,t+len+.02);
-}
-function kick(t,vel){
-  const o=osc('sine',130,t,t+.32),g=ctx.createGain();
-  o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(48,t+.11);
-  g.gain.setValueAtTime(.9*vel,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(dBus);
-  noise(t,.02,'lowpass',1800,.5,.25*vel);
-}
-const hat=(t,vel)=>noise(t,.045,'highpass',7500,.8,.22*vel);
-function rim(t,vel){
-  noise(t,.07,'bandpass',1900,1.4,.5*vel);
-  const o=osc('triangle',420,t,t+.06),g=ctx.createGain();g.gain.setValueAtTime(.22*vel,t);g.gain.exponentialRampToValueAtTime(.001,t+.05);o.connect(g);g.connect(dBus);
+  if(engine.ready())return engine.init();
+  try{engine.init();iosUnmute();return true;}
+  catch(e){
+    $('hint').textContent=e.code==='unsupported'?'Dieser Browser kann keinen Ton erzeugen (Web Audio fehlt).':'Der Ton ließ sich nicht starten. Seite neu laden und noch einmal auf Play tippen.';
+    return false;
+  }
 }
 
-
-/* Was der Ablauf vom Klang braucht, ohne den AudioContext selbst anzufassen */
-const audioNow=()=>ctx.currentTime;
-const latency=()=>ctx.outputLatency||ctx.baseLatency||0;
-function prune(){const now=ctx.currentTime;live=live.filter(x=>x[1]>now);}
-function silence(){live.forEach(x=>{try{x[0].stop();}catch(e){}});live=[];killTimer=0;if(ctx){gate.gain.cancelScheduledValues(ctx.currentTime);gate.gain.setValueAtTime(1,ctx.currentTime);}}
-function cancelFade(){if(killTimer){clearTimeout(killTimer);silence();}}
-function fadeOut(){gate.gain.setTargetAtTime(0,ctx.currentTime,.015);killTimer=setTimeout(silence,90);}
-return {initAudio,setVols,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut};
-})();
-
-/* ---------- sequencer.js ---------- */
-const __mod12=(function(){
-const {$,S,chords,run,bassNote}=__mod9;
-const {setActive,showNotes}=__mod10;
-const {initAudio,rhodes,bass,kick,hat,rim,audioNow,latency,prune,cancelFade,fadeOut}=__mod11;
-/* ================= Ablauf ================= */
-
-
-
-
-let timer=0,nextBar=0,barIdx=0,queue=[];
-function scheduleBar(t0,i){
-  const spb=60/S.bpm,sw=S.swing/100*spb/6,n=chords.length;
-  const T=b=>t0+b*spb+(Math.round(b*2)%2?sw:0);     // Achtel zwischen den Schlägen kommen etwas später
-  const v=chords[i%n],nx=chords[(i+1)%n],notes=v.voicing,low=bassNote(v);
-  if(S.feel==='pad')notes.forEach((m,k)=>rhodes(m,T(0)+k*.016,3.8*spb,.6+(k===3?.1:0)));
-  else if(S.feel==='comp')[[0,1.3,.75],[1.5,.7,.52],[2.5,1.25,.66]].forEach(([b,d,ve])=>notes.forEach((m,k)=>rhodes(m,T(b)+k*.008,d*spb,ve+(k===3?.08:0))));
-  else[0,1,2,3,2,1,2,3].forEach((k,j)=>rhodes(notes[k],T(j/2),1.7*spb,j%2?.5:.7));
-  bass(low,T(0),2.2*spb,.9);bass(low,T(2.5),.7*spb,.7);bass(bassNote(nx)-1,T(3.5),.4*spb,.6);
-  for(let j=0;j<8;j++)hat(T(j/2),j%2?.4:.7);
-  kick(T(0),1);kick(T(2.5),.75);rim(T(1),.7);rim(T(3),.8);
-  queue.push({t:t0,i:i%n});
+// Der Song zur aktuellen Folge: Stil Jazzy Beats mit Spielweise, Tempo und Swing aus den Einstellungen,
+// die Kanalpegel aus den Lautstärkereglern.
+function buildSong(){
+  const p=progression();
+  if(!p)return null;
+  const song=registry.get('styles','jazzy-beats').generate(p,{feel:S.feel},{bpm:S.bpm,swing:S.swing,rnd:Math.random});
+  for(const [id,key] of VOLUMES){const ch=song.mixer.channels.find(c=>c.id===id);if(ch)ch.gain=faderToGain(S[key]);}
+  return song;
 }
-function tick(){
-  const now=audioNow();
-  prune();
-  while(nextBar<now+.6){scheduleBar(nextBar,barIdx);nextBar+=240/S.bpm;barIdx=(barIdx+1)%chords.length;}
+// Gibt der Engine den Song zur aktuellen Folge. Im Lauf gilt er ab dem nächsten Takt.
+function refresh(){
+  try{const song=buildSong();if(song)engine.load(song);}
+  catch(e){$('hint').textContent=e.message;console.error(e);}
+}
+function setVolumes(){for(const [id,key] of VOLUMES)engine.setParam(`channel/${id}/gain`,faderToGain(S[key]));}
+
+// Nummer des Akkords, der bei beat im Song klingt, oder -1.
+function chordAt(song,beat){
+  const list=song.meta&&song.meta.chords&&song.meta.chords.chords;
+  if(!list||!list.length||!(song.length>0))return -1;
+  const b=(beat%song.length+song.length)%song.length;
+  let at=0;
+  for(let i=0;i<list.length;i++){at+=list[i].duration;if(b<at)return i;}
+  return list.length-1;
 }
 function frame(){
   if(!run.playing)return;
-  const now=audioNow()-latency();
-  while(queue.length>1&&queue[1].t<=now)queue.shift();
-  const cur=queue.length&&queue[0].t<=now?queue[0].i:-1;
+  const pos=engine.position(),cur=pos?chordAt(pos.song,pos.beat):-1;
   if(cur!==run.active)setActive(cur);
   requestAnimationFrame(frame);
 }
 function start(){
   if(!initAudio())return;
-  cancelFade();
-  run.playing=true;queue=[];barIdx=0;nextBar=audioNow()+.15;
-  tick();timer=setInterval(tick,50);requestAnimationFrame(frame);
+  if(!engine.play())return;
+  run.playing=true;requestAnimationFrame(frame);
   $('playTxt').textContent='Stop';$('playIco').innerHTML='<path d="M6 5h12v14H6z"/>';
 }
 function stop(){
-  run.playing=false;clearInterval(timer);queue=[];
-  fadeOut();
+  run.playing=false;engine.stop();
   setActive(-1);
   $('playTxt').textContent='Play';$('playIco').innerHTML='<path d="M7 4v16l13-8z"/>';
 }
+// Spielt Akkord i an: die Töne leicht gebrochen auf dem Rhodes, dazu den Basston.
 function audition(i){
   if(!initAudio())return;
-  cancelFade();
-  const v=chords[i],t=audioNow()+.03;
-  v.voicing.forEach((m,k)=>rhodes(m,t+k*.02,1.6,.7));bass(bassNote(v),t,1.4,.8);
+  const c=chords[i];if(!c)return;
+  engine.audition([
+    {track:'rhodes',notes:c.voicing.map((m,k)=>({p:m,v:.7,s:1.6,o:k*.02}))},
+    {track:'bass',notes:[{p:bassNote(c),v:.8,s:1.4,o:0}]}
+  ]);
   document.querySelectorAll('.tile').forEach((el,j)=>el.classList.toggle('on',j===i));showNotes(i);
 }
-return {start,stop,audition};
+return {start,stop,audition,refresh,setVolumes,chordAt};
 })();
 
 /* ---------- app/main.js ---------- */
-const __mod13=(function(){
-const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist}=__mod9;
-const {buildKeys,render,renderFavs}=__mod10;
-const {setVols}=__mod11;
-const {start,stop,audition}=__mod12;
+const __mod23=(function(){
+const {$,S,favs,hist,recent,run,chordGen,genParams,fromIds,idsOf,save,load,setProg,revoice,pushHist}=__mod17;
+const {buildKeys,render,renderFavs}=__mod18;
+const {start,stop,audition,refresh,setVolumes}=__mod22;
 /* ================= Bedienung ================= */
-
 
 
 
 
 function newLoop(){
   const p=chordGen().generate(genParams(),{key:S.key,mode:S.mode,rnd:Math.random,previous:fromIds(S.loop,S.key,S.mode),locked:S.locks,avoid:recent});
-  S.loop=idsOf(p);setProg(p);
+  S.loop=idsOf(p);setProg(p);refresh();
   recent.push(p);if(recent.length>12)recent.shift();
   render();save();
 }
@@ -1250,7 +1913,7 @@ function bind(){
   $('gen').addEventListener('click',()=>{pushHist();newLoop();});
   $('back').addEventListener('click',()=>{
     const h=hist.pop();if(!h)return;
-    S.key=h.key;S.mode=h.mode;S.n=h.n;S.loop=h.loop;S.locks=Array(S.n).fill(false);revoice();render();save();
+    S.key=h.key;S.mode=h.mode;S.n=h.n;S.loop=h.loop;S.locks=Array(S.n).fill(false);revoice();refresh();render();save();
   });
   $('fav').addEventListener('click',()=>{
     const f={key:S.key,mode:S.mode,loop:S.loop.slice()},same=x=>x.key===f.key&&x.mode===f.mode&&x.loop.join()===f.loop.join();
@@ -1260,21 +1923,26 @@ function bind(){
   $('favs').addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i;
     if(b.classList.contains('del'))favs.splice(i,1);
-    else{const f=favs[i];pushHist();S.key=f.key;S.mode=f.mode;S.n=f.loop.length;S.loop=f.loop.slice();S.locks=Array(S.n).fill(false);revoice();}
+    else{const f=favs[i];pushHist();S.key=f.key;S.mode=f.mode;S.n=f.loop.length;S.loop=f.loop.slice();S.locks=Array(S.n).fill(false);revoice();refresh();}
     render();save();
   });
   $('segN').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||+b.dataset.v===S.n)return;
     pushHist();S.n=+b.dataset.v;S.loop=S.loop.slice(0,S.n);S.locks=Array.from({length:S.n},(_,i)=>!!S.locks[i]&&!!S.loop[i]);newLoop();});
   $('segMode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.v===S.mode)return;
     pushHist();S.mode=b.dataset.v;S.loop=[];S.locks=Array(S.n).fill(false);newLoop();});
-  $('segFeel').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.feel=b.dataset.v;render();save();});
-  $('segNine').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.nine=+b.dataset.v;revoice();render();save();});
-  $('keys12').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.key=+b.dataset.v;revoice();render();save();});
-  for(const id of ['spice','bpm','swing','volR','volB','volD'])$(id).addEventListener('input',e=>{S[id]=+e.target.value;setVols();render();save();});
+  $('segFeel').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.feel=b.dataset.v;refresh();render();save();});
+  $('segNine').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.nine=+b.dataset.v;revoice();refresh();render();save();});
+  $('keys12').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.key=+b.dataset.v;revoice();refresh();render();save();});
+  // Tempo und Swing gelten ab dem nächsten Takt, die Lautstärken sofort. Würze wirkt erst bei der nächsten Folge.
+  for(const id of ['spice','bpm','swing','volR','volB','volD'])$(id).addEventListener('input',e=>{
+    S[id]=+e.target.value;
+    if(id==='bpm'||id==='swing')refresh();else if(id!=='spice')setVolumes();
+    render();save();
+  });
 }
 function boot(d){
   load(d);buildKeys();bind();
-  if(S.loop.length){revoice();render();}else newLoop();
+  if(S.loop.length){revoice();refresh();render();}else newLoop();
 }
 if(window.claude&&window.claude.hot){
   window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({S,favs}));

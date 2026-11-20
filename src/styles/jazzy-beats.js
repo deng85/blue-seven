@@ -1,6 +1,7 @@
 /* ================= Stil „Jazzy Beats“ ================= */
 /* Baut aus einer beliebigen Akkordfolge einen Loop mit Rhodes, Bass und Drums, als Song-JSON.
-   Noten, Längen und Anschläge entsprechen dem ursprünglichen Takt-Ablauf (scheduleBar in sequencer.js).
+   Noten, Längen und Anschläge entsprechen dem ursprünglichen Takt-Ablauf (scheduleBar im früheren sequencer.js,
+   als Referenz in test/fixtures/legacy-bar.js).
    Der Stil kennt keinen Akkord-Generator. Er liest von der Folge nur key, mode, root, tones, duration,
    voicing und bass. */
 
@@ -69,7 +70,7 @@ function drumBar(){
   return out.sort((a,b)=>a.t-b.t||a.p-b.p);
 }
 
-// Mixer wie im bisherigen Signalweg (audio.js).
+// Mixer wie im früheren Signalweg (audio.js bis Phase 2).
 function mixer(){
   return {
     channels:[
