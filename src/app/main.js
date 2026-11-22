@@ -6,6 +6,7 @@ import {readControl} from './ui-params.js';
 import {randomSeed} from '../core/rng.js';
 import {start,stop,audition,refresh,setMix,resetMix,setTempo,currentSong,jump} from './player.js';
 import {initSongs,storeSong} from './songs.js';
+import {initExport} from './export.js';
 
 function newLoop(){
   const p=chordGen().generate(genParams(),{key:S.key,mode:S.mode,rnd:Math.random,previous:fromIds(S.loop,S.key,S.mode),locked:S.locks,avoid:recent});
@@ -79,7 +80,7 @@ function boot(d){
   load(d);buildKeys();renderModules();bind();
   if(S.loop.length){revoice();refresh();render();}else newLoop();
   renderMixer(currentSong());
-  initSongs();
+  initSongs();initExport();
 }
 if(window.claude&&window.claude.hot){
   window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({S,favs}));

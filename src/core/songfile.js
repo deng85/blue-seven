@@ -61,11 +61,39 @@ function packSong(song,overrides,title){
   if(title){s.meta=isObj(s.meta)?s.meta:{};s.meta.title=title;}
   return s;
 }
+// Rollt einen Song für den Export auf: n Durchgänge hintereinander als ein Song, der am Ende aufhört.
+// Clips, Abschnitte und Automation jedes Durchgangs stehen um die Songlänge versetzt. Wie im Lauf beginnt
+// die Automation in jedem Durchgang wieder mit ihrem Anfangswert.
+function repeatSong(song,n){
+  const s=copy(song),L=song.length,reps=Math.max(1,Math.floor(n)||1);
+  s.length=L*reps;s.loop=false;
+  const each=(list,shift)=>{
+    const out=[];
+    for(let k=0;k<reps;k++)for(const x of list)out.push(shift(copy(x),k));
+    return out;
+  };
+  for(const t of s.tracks)t.clips=each(t.clips,(c,k)=>{c.start+=k*L;return c;});
+  s.sections=each(s.sections,(x,k)=>{x.start+=k*L;if(k)x.id=`${x.id}-${k+1}`;return x;});
+  for(const lane of s.automation||[]){
+    const pts=lane.points;
+    if(!pts.length)continue;
+    lane.points=[];
+    for(let k=0;k<reps;k++){
+      if(k&&pts[0].t>0)lane.points.push({t:k*L,v:pts[0].v,curve:'step'});
+      pts.forEach((p,i)=>{
+        const q=Object.assign({},p,{t:p.t+k*L});
+        if(k&&i===0)q.curve='step';
+        lane.points.push(q);
+      });
+    }
+  }
+  return s;
+}
 const titleOf=song=>song&&isObj(song.meta)&&typeof song.meta.title==='string'&&song.meta.title.trim()||'Song';
 // Dateiname ohne Zeichen, die ein Dateisystem stören.
-function fileName(song){
+function fileName(song,ext){
   const base=titleOf(song).normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/ß/g,'ss').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').toLowerCase();
-  return (base||'song')+'.blueseven.json';
+  return (base||'song')+(ext||'.blueseven.json');
 }
 
 /* ---------- Sammlung der gespeicherten Songs ---------- */
@@ -96,4 +124,4 @@ function putSong(songs,name,song,now){
   return i>=0?'replaced':'added';
 }
 
-export {MIGRATIONS,MAX_SONGS,migrateSong,readSong,missingModules,packSong,titleOf,fileName,readLibrary,putSong};
+export {MIGRATIONS,MAX_SONGS,migrateSong,readSong,missingModules,packSong,repeatSong,titleOf,fileName,readLibrary,putSong};

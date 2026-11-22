@@ -155,3 +155,10 @@ body.fixed .gen-only{display:none}
 #pasteBox[open] summary{margin-bottom:6px}
 #pasteBox .mini{margin-top:6px}
 .fav .load span{color:var(--muted);font-size:13px;margin-left:6px}
+
+/* wav export */
+progress{-webkit-appearance:none;appearance:none;width:100%;height:8px;border:0;border-radius:4px;background:var(--line);overflow:hidden}
+progress::-webkit-progress-bar{background:var(--line)}
+progress::-webkit-progress-value{background:var(--hot)}
+progress::-moz-progress-bar{background:var(--hot)}
+progress[hidden]{display:none}

@@ -149,7 +149,8 @@ function createEngine(registry,options){
         try{ac=new AC({latencyHint:'playback'});}catch(e){ac=new AC();}
         gate=ac.createGain();gate.connect(ac.destination);
         if(song)graph=buildGraph(song);
-        ac.resume();
+        // Ein OfflineAudioContext (WAV-Export) lehnt resume vor dem Start ab. Das ist kein Fehler.
+        const r=ac.resume();if(r&&r.catch)r.catch(()=>{});
         return true;
       }catch(e){
         ac=null;graph=null;
@@ -257,4 +258,4 @@ function writeMixer(mx,parts,value){
   else owner[prop]=prop==='mute'||prop==='solo'?!!value:value;
 }
 
-export {createEngine};
+export {createEngine,START_DELAY};

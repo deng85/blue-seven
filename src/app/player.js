@@ -5,6 +5,7 @@
 import {$,S,chords,run,progression,bassNote,styleMod,styleParams} from './state.js';
 import {setActive,showNotes} from './ui.js';
 import {showPosition,renderSong} from './ui-song.js';
+import {renderExport} from './ui-export.js';
 import {createRng} from '../core/rng.js';
 import {registry} from './modules.js';
 import {createEngine} from '../engine/engine.js';
@@ -58,7 +59,7 @@ function buildSong(){
 }
 // Gibt der Engine den Song zur aktuellen Folge. Im Lauf gilt er ab dem nächsten Takt.
 function refresh(){
-  try{const song=buildSong();if(song){engine.load(song,{overrides:run.fixed?run.fixed.ov:S.ov||[]});renderSong(song);}}
+  try{const song=buildSong();if(song){engine.load(song,{overrides:run.fixed?run.fixed.ov:S.ov||[]});renderSong(song);renderExport(song);}}
   catch(e){
     // Ein geladener Song, den die Engine nicht nimmt, wird geschlossen. Es gilt wieder der Generator.
     if(run.fixed){run.fixed=null;refresh();$('hint').textContent=e.message;return;}

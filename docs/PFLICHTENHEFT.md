@@ -582,6 +582,8 @@ Stand nach Phase 6: F-U10 und F-U11 sind umgesetzt, im neuen Bereich „Songs“
   - **Technik:** Gerechnet wird ohne Echtzeit mit einem `OfflineAudioContext` und derselben Engine, denselben Instrumenten und Effekten wie bei der Wiedergabe. Es gibt keinen zweiten Klangweg. Während der Berechnung zeigt die App den Fortschritt und lässt sich abbrechen. Die laufende Wiedergabe wird dafür angehalten.
   - **Grenze:** Ist die Datei voraussichtlich größer als 100 MB (etwa 9 Minuten), weist die App vorher darauf hin.
 
+Stand nach Phase 7: F-U12 ist umgesetzt, im neuen Bereich „WAV-Export“ mit den Reglern Wiederholungen und Ende. Darunter steht, wie lang und wie groß die Datei wird. `core/songfile.js` rollt den Song mit `repeatSong` zu einem Song mit Ende auf, `engine/render.js` lässt eine eigene Engine in einen `OfflineAudioContext` spielen und stellt deren Zeitgeber alle 0,2 s von Hand weiter, `core/wav.js` schneidet und schreibt die Datei. Ein Test belegt, dass dabei dieselben Klänge, Hüllkurven, Pumpbewegungen und Filterfahrten zur selben Zeit geplant werden wie bei der Wiedergabe. Ein Ausklang, der nach 10 s noch nicht verklungen ist, wird in 50 ms ausgeblendet. Über 30 Minuten lehnt die App den Export ab, weil der Speicher des Browsers dafür nicht reicht. Ein Deep-House-Song von gut vier Minuten braucht am Rechner etwa 35 s. Gebraucht wird `OfflineAudioContext.suspend`, das Chrome und Safari haben. Fehlt es, meldet die App das. Die Einstellungen stehen als zusätzliches Feld `wav` in `S`, getrennt für Loops und für Songs mit Ende.
+
 ## 12. Speicherung und Kompatibilität
 
 - **F-P1** Der Schlüssel `blueseven.v1` und seine Struktur `{ S, favs }` bleiben bestehen.
