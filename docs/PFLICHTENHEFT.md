@@ -438,6 +438,8 @@ track/<spur>/instrument/<parameter>
 - **F-V3** Ein Song mit höherer Version wird nicht abgespielt. Die App zeigt eine verständliche Meldung.
 - **F-V4** Unbekannte Felder werden ignoriert und beim erneuten Speichern erhalten.
 - **F-V5** Ein unbekannter Instrument- oder Effekttyp bringt die Wiedergabe nicht zum Absturz. Die Spur bleibt stumm oder der Effekt wird übersprungen, und die App weist darauf hin.
+
+Stand nach Phase 6: `core/songfile.js` liest einen Song aus Text (`readSong`), hebt ihn mit `migrateSong` der Reihe nach auf die aktuelle Version und prüft ihn. Die Tabelle `MIGRATIONS` ist noch leer, weil es nur Version 1 gibt. Ein Test prüft, dass sie für jeden Versionssprung einen Eintrag hat, und `test/fixtures/song-v1.json` ist ein mit Version 1 gesicherter Song, der sich auf Dauer laden lassen muss. Abweichung von F-V2: Die Migration läuft beim Lesen in der App und nicht in der Engine. Die Engine bekommt nur Songs der aktuellen Version.
 - **F-V6** Die Akkordfolge hat mit `blueseven.chords` eine eigene Versionsnummer nach denselben Regeln.
 
 ### 9.6 Formatprüfung
@@ -571,6 +573,8 @@ Stand nach Phase 4: Umgesetzt sind F-U1 (zwei Auswahllisten aus der Registry, bi
 
 Stand nach Phase 5: F-U4, F-U5 und F-U9 sind umgesetzt. Hat ein Song mehr als einen Abschnitt, erscheint der Bereich „Song“ mit einer Leiste der Abschnitte, der laufenden Position und einem Knopf pro Abschnitt zum Hinspringen. Läuft nichts, startet das Antippen die Wiedergabe an dieser Stelle. Aufklappbar darunter zeigt eine Balkenansicht, in welchen Abschnitten welche Spur spielt. „Song neu bauen“ erscheint nur bei Stilen, die würfeln. Ein Wechsel des Stils stellt Tempo und Swing auf die Standardwerte des Stils. Noch offen: Regler mit Automation bewegen sich in der Oberfläche nicht mit, sie zeigen den Wert aus dem Song.
 
+Stand nach Phase 6: F-U10 und F-U11 sind umgesetzt, im neuen Bereich „Songs“. „Speichern“ legt den aktuellen Song mit Mixer und Effekten im Browser ab, mit eigenem Namen oder unter seinem Titel. „Als Datei sichern“ schreibt ihn als `.blueseven.json`, „Kopieren“ legt ihn als Text in die Zwischenablage, „Datei laden“ und „Song als Text einfügen“ holen ihn zurück. Ein geladener Song wird genau so gespielt, wie er gesichert wurde. Solange er offen ist, ruht der Generator: Akkordwahl, Stil und Würfeln sind ausgeblendet, Mixer, Effekte und Tempo lassen sich weiter ändern und werden mit dem Song festgehalten. „Schließen“ kehrt zum Generator mit den vorherigen Einstellungen zurück. Beim Sichern entfällt die Automation auf Werten, die der Nutzer von Hand gesetzt hat, damit der Song überall so klingt wie eingestellt. Bringt ein Song eine Akkordfolge mit Beschriftung und Lage mit, zeigt die App sie als Kacheln, sonst bleiben die Kacheln leer.
+
 - **F-U12 WAV-Export** (aufgenommen am 20.11.2026, Phase 7): Der aktuelle Song lässt sich als WAV-Datei speichern, so wie er klingt, also mit allen Mixer- und Effekteinstellungen des Nutzers. Zwei Einstellungen:
   - **Wiederholungen:** wie oft der Song hintereinander in der Datei steht, 1 bis 16, Standard 1 für Songs mit Arrangement und 4 für Loops wie Jazzy Beats. Die Wiederholungen gehen ohne Lücke ineinander über, Hall und Echo klingen dabei wie im Lauf in den nächsten Durchgang hinein.
   - **Ende:** „mit Ausklang“ lässt Hall, Echo und ausklingende Töne nach dem letzten Takt zu Ende klingen, bis der Pegel unter −60 dB fällt, höchstens 10 s. „Hart abgeschnitten“ beendet die Datei genau am Ende des letzten Takts.
@@ -598,6 +602,8 @@ Entschieden: Mixer-Einstellungen gelten pro Song, nicht pro Stil.
 - **F-P11** Ein gespeicherter oder importierter Song bringt seinen eigenen Mixer mit. Beim Laden ersetzt dieser den Mixer des bisherigen Songs vollständig.
 - **F-P12** Der aktuelle Song samt Mixer überlebt das Neuladen der Seite. Für Jazzy Beats bleibt das heutige Verhalten erhalten: Die drei Lautstärken stehen nach dem Neuladen und nach jedem Würfeln so, wie der Nutzer sie eingestellt hat.
 - **F-P13** Pro Kanal und pro Effekt gibt es „Zurücksetzen“, das die Standardwerte des Stils wiederherstellt.
+
+Stand nach Phase 6: Gespeicherte Songs liegen unter dem neuen Schlüssel `blueseven.songs.v1` als `{ current, songs }`. `songs` sind höchstens 20 Einträge mit Name, Zeitpunkt und Song, neueste zuerst. Ein gleicher Name ersetzt den Eintrag, bei voller Liste oder vollem Speicher gibt es eine Meldung und nichts geht verloren. `current` ist der gerade geladene Song mit seinen von Hand gesetzten Adressen. Er überlebt damit das Neuladen der Seite (F-P12). Unbrauchbare Einträge werden beim Lesen verworfen. `blueseven.v1` bleibt unverändert, auch Tempo und Swing des Generators bleiben stehen, während ein geladener Song offen ist. Ein eigener Knopf „Neuer Song“ (F-P10) fehlt weiter, ein neuer Song entsteht durch den Wechsel des Stils.
 
 Stand nach Phase 5: Neu in `S` sind `seed` (Startwert des Zufalls für den Stil, „Song neu bauen“ würfelt ihn neu) und `ov` (die vom Nutzer gesetzten Adressen nach F-E6). Die Einstellungen für den WAV-Export (Wiederholungen, Ende) kommen in Phase 7 als weitere zusätzliche Felder dazu.
 
