@@ -73,6 +73,36 @@ class FakeAudioContext {
 }
 FakeAudioContext.instances = [];
 
+// Ein nachgebauter OfflineAudioContext für den WAV-Export. startRendering() läuft von Halt zu Halt (suspend),
+// stellt dabei currentTime weiter und wartet jeweils auf resume(), wie es der Browser tut. Der Puffer bleibt leer.
+class FakeOfflineAudioContext extends FakeAudioContext {
+  constructor(channels, length, sampleRate) {
+    super(); this.channels = channels; this.length = length; this.sampleRate = sampleRate; this.stops = []; this.go = null;
+  }
+  suspend(t) {
+    if (!(t > this.currentTime) || t >= this.length / this.sampleRate) return Promise.reject(new Error('suspend zur falschen Zeit'));
+    return new Promise(resolve => this.stops.push({ t, resolve }));
+  }
+  resume() {
+    if (!this.go) return Promise.reject(new Error('resume ohne Halt'));
+    const go = this.go; this.go = null; go(); return Promise.resolve();
+  }
+  async startRendering() {
+    this.state = 'running';
+    for (;;) {
+      this.stops.sort((a, b) => a.t - b.t);
+      const next = this.stops.shift();
+      if (!next) break;
+      this.currentTime = next.t;
+      const resumed = new Promise(r => { this.go = r; });
+      next.resolve();
+      await resumed;
+    }
+    this.currentTime = this.length / this.sampleRate;
+    return this.createBuffer(this.channels, this.length, this.sampleRate);
+  }
+}
+
 // Zeitgeber zum Weiterstellen von Hand: Intervalle und Timeouts laufen erst, wenn der Test advance() aufruft.
 function createClock(ctxRef) {
   let id = 0, now = 0;
@@ -114,4 +144,4 @@ function pathGain(node, to = null, skip = [], seen = new Set()) {
   return own * sum;
 }
 
-export { FakeAudioContext, FakeParam, FakeNode, createClock, pathGain };
+export { FakeAudioContext, FakeOfflineAudioContext, FakeParam, FakeNode, createClock, pathGain };
