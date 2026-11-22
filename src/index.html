@@ -91,6 +91,18 @@
     <p class="hint" id="songMsg" aria-live="polite">Speichern legt den aktuellen Song mit Mixer und Effekten in diesem Browser ab. Als Datei oder Text lässt er sich weitergeben.</p>
   </section>
 
+  <section>
+    <h2>WAV-Export</h2>
+    <div class="row"><div class="lab"><label for="wavReps">Wiederholungen</label><output id="wavRepsOut"></output></div>
+      <input type="range" id="wavReps" min="1" max="16" step="1"></div>
+    <div class="row"><div class="lab"><span>Ende</span></div>
+      <div class="seg" id="wavEnd"><button data-v="1">Mit Ausklang</button><button data-v="0">Hart abgeschnitten</button></div></div>
+    <p class="hint" id="wavInfo"></p>
+    <progress id="wavProg" max="1" value="0" hidden aria-label="Fortschritt der Rechnung"></progress>
+    <button class="mini wide" id="wavGo">WAV-Datei rechnen</button>
+    <p class="hint" id="wavMsg" aria-live="polite">Rechnet den aktuellen Song mit Mixer und Effekten als Audiodatei, so wie er klingt.</p>
+  </section>
+
   <section class="gen-only">
     <h2>Gemerkte Folgen</h2>
     <div class="favs" id="favs"></div>

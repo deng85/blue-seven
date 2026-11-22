@@ -16,7 +16,7 @@ const S=Object.assign({},DEF),favs=[],hist=[],recent=[],chords=[];
 let current=null;   // die ganze aktuelle Folge, nur über progression() lesbar
 // läuft gerade etwas, und welcher Akkord ist dran. fixed: ein geladener Song {song, ov, orig}, der statt des
 // Generators gespielt wird (Phase 6). ov sind die von Hand gesetzten Adressen, orig der Stand beim Laden.
-const run={playing:false,active:-1,fixed:null};
+const run={playing:false,active:-1,fixed:null,exporting:false};
 const LS='blueseven.v1';
 
 /* ---------- Akkord-Generator ---------- */
@@ -58,6 +58,7 @@ function load(d){
     if(!S.mix||typeof S.mix!=='object'||Array.isArray(S.mix))delete S.mix;
     if(!S.sp||typeof S.sp!=='object'||Array.isArray(S.sp))delete S.sp;
     if(!Array.isArray(S.ov))delete S.ov;
+    if(!S.wav||typeof S.wav!=='object'||Array.isArray(S.wav))delete S.wav;
     if(!Array.isArray(S.loop)||S.loop.length!==S.n||!fromIds(S.loop,S.key,S.mode))S.loop=[];
   }
   S.locks=Array.from({length:S.n},(_,i)=>!!(S.locks&&S.locks[i]&&S.loop[i]));

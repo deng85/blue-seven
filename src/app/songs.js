@@ -56,12 +56,12 @@ function tryOpen(text,from){
   open(song,[],`„${titleOf(song)}“ ${from} geladen.`);
 }
 // Der aktuelle Song zum Sichern, mit dem Namen aus dem Feld. Ohne Namen behält er seinen Titel.
-function packed(){
+function packedSong(){
   const song=currentSong();
   return song?packSong(song,run.fixed?run.fixed.ov:S.ov,$('songName').value.trim()):null;
 }
 function saveCurrent(){
-  const song=packed();if(!song)return;
+  const song=packedSong();if(!song)return;
   let name=titleOf(song);
   // Ohne eigenen Namen wird nichts überschrieben: Der Titel bekommt eine Nummer.
   if(!$('songName').value.trim()){
@@ -79,14 +79,14 @@ function saveCurrent(){
   msg(r==='replaced'?`„${name}“ überschrieben.`:`Gespeichert als „${name}“.`);
 }
 function download(){
-  const song=packed();if(!song)return;
+  const song=packedSong();if(!song)return;
   const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(song)],{type:'application/json'}));
   a.href=url;a.download=fileName(song);document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),10000);
   msg(`Die Datei ${fileName(song)} liegt bei den Downloads.`);
 }
 function copyText(){
-  const song=packed();if(!song)return;
+  const song=packedSong();if(!song)return;
   const text=JSON.stringify(song),done=()=>msg('Der Song liegt als Text in der Zwischenablage.');
   // Ohne Zugriff auf die Zwischenablage steht der Text markiert im Feld zum Kopieren von Hand.
   const byHand=()=>{
@@ -135,4 +135,4 @@ function initSongs(){
   if(lib.current&&openSong(lib.current.song,lib.current.ov))show();else renderList();
 }
 
-export {initSongs,storeSong};
+export {initSongs,storeSong,packedSong};
